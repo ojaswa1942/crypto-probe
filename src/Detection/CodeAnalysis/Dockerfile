@@ -2,7 +2,7 @@ FROM ubuntu:18.04
 
 MAINTAINER Ojaswa Sharma (ojaswa1942@gmail.com)
 
-# SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-c"]
 RUN apt-get update
 RUN apt-get install -y sudo wget tar unzip pandoc python-setuptools python-pip python-dev python-virtualenv git build-essential software-properties-common
 # RUN add-apt-repository -y ppa:ethereum/ethereum
