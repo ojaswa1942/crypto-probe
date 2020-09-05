@@ -14,8 +14,6 @@ _default_dirs = ['.',
                  os.path.join(sys.prefix, 'lib'),
                  None]
 _all_dirs = []
-# search the default dirs first
-_all_dirs.extend(_default_dirs)
 
 if sys.version < '3':
   import __builtin__
@@ -32,7 +30,8 @@ for v in ('Z3_LIBRARY_PATH', 'PATH', 'PYTHONPATH'):
     lds = lp.split(';') if sys.platform in ('win32') else lp.split(':')
     _all_dirs.extend(lds)
 
-_failures = []
+_all_dirs.extend(_default_dirs)
+
 for d in _all_dirs:
   try:
     d = os.path.realpath(d)
@@ -41,16 +40,14 @@ for d in _all_dirs:
       if os.path.isfile(d):
         _lib = ctypes.CDLL(d)
         break
-  except Exception as e:
-    _failures += [e]
+  except:
     pass
 
 if _lib is None:
   # If all else failed, ask the system to find it.
   try:
     _lib = ctypes.CDLL('libz3.%s' % _ext)
-  except Exception as e:
-    _failures += [e]
+  except:
     pass
 
 if _lib is None:
@@ -66,10 +63,10 @@ if _lib is None:
     print("    builtins.Z3_LIB_DIRS = [ '/path/to/libz3.%s' ] " % _ext)
   raise Z3Exception("libz3.%s not found." % _ext)
 
-def _str_to_bytes(s):
+def _to_ascii(s):
   if isinstance(s, str):
     try: 
-      return s.encode('latin-1')
+      return s.encode('ascii')
     except:
       # kick the bucket down the road.  :-J
       return s
@@ -84,7 +81,7 @@ else:
      if s != None:
         enc = sys.stdout.encoding
         if enc != None: return s.decode(enc)
-        else: return s.decode('latin-1')
+        else: return s.decode('ascii')
      else:
         return ""
 
@@ -179,9 +176,6 @@ _lib.Z3_mk_fresh_func_decl.restype = FuncDecl
 _lib.Z3_mk_fresh_func_decl.argtypes = [ContextObj, ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(Sort), Sort]
 _lib.Z3_mk_fresh_const.restype = Ast
 _lib.Z3_mk_fresh_const.argtypes = [ContextObj, ctypes.c_char_p, Sort]
-_lib.Z3_mk_rec_func_decl.restype = FuncDecl
-_lib.Z3_mk_rec_func_decl.argtypes = [ContextObj, Symbol, ctypes.c_uint, ctypes.POINTER(Sort), Sort]
-_lib.Z3_add_rec_def.argtypes = [ContextObj, FuncDecl, ctypes.c_uint, ctypes.POINTER(Ast), Ast]
 _lib.Z3_mk_true.restype = Ast
 _lib.Z3_mk_true.argtypes = [ContextObj]
 _lib.Z3_mk_false.restype = Ast
@@ -228,8 +222,6 @@ _lib.Z3_mk_gt.restype = Ast
 _lib.Z3_mk_gt.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_ge.restype = Ast
 _lib.Z3_mk_ge.argtypes = [ContextObj, Ast, Ast]
-_lib.Z3_mk_divides.restype = Ast
-_lib.Z3_mk_divides.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_int2real.restype = Ast
 _lib.Z3_mk_int2real.argtypes = [ContextObj, Ast]
 _lib.Z3_mk_real2int.restype = Ast
@@ -348,8 +340,6 @@ _lib.Z3_mk_array_default.restype = Ast
 _lib.Z3_mk_array_default.argtypes = [ContextObj, Ast]
 _lib.Z3_mk_as_array.restype = Ast
 _lib.Z3_mk_as_array.argtypes = [ContextObj, FuncDecl]
-_lib.Z3_mk_set_has_size.restype = Ast
-_lib.Z3_mk_set_has_size.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_set_sort.restype = Sort
 _lib.Z3_mk_set_sort.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_empty_set.restype = Ast
@@ -392,28 +382,20 @@ _lib.Z3_mk_seq_sort.restype = Sort
 _lib.Z3_mk_seq_sort.argtypes = [ContextObj, Sort]
 _lib.Z3_is_seq_sort.restype = ctypes.c_bool
 _lib.Z3_is_seq_sort.argtypes = [ContextObj, Sort]
-_lib.Z3_get_seq_sort_basis.restype = Sort
-_lib.Z3_get_seq_sort_basis.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_re_sort.restype = Sort
 _lib.Z3_mk_re_sort.argtypes = [ContextObj, Sort]
 _lib.Z3_is_re_sort.restype = ctypes.c_bool
 _lib.Z3_is_re_sort.argtypes = [ContextObj, Sort]
-_lib.Z3_get_re_sort_basis.restype = Sort
-_lib.Z3_get_re_sort_basis.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_string_sort.restype = Sort
 _lib.Z3_mk_string_sort.argtypes = [ContextObj]
 _lib.Z3_is_string_sort.restype = ctypes.c_bool
 _lib.Z3_is_string_sort.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_string.restype = Ast
 _lib.Z3_mk_string.argtypes = [ContextObj, ctypes.c_char_p]
-_lib.Z3_mk_lstring.restype = Ast
-_lib.Z3_mk_lstring.argtypes = [ContextObj, ctypes.c_uint, ctypes.c_char_p]
 _lib.Z3_is_string.restype = ctypes.c_bool
 _lib.Z3_is_string.argtypes = [ContextObj, Ast]
 _lib.Z3_get_string.restype = ctypes.c_char_p
 _lib.Z3_get_string.argtypes = [ContextObj, Ast]
-_lib.Z3_get_lstring.restype = ctypes.POINTER(ctypes.c_char)
-_lib.Z3_get_lstring.argtypes = [ContextObj, Ast, ctypes.POINTER(ctypes.c_uint)]
 _lib.Z3_mk_seq_empty.restype = Ast
 _lib.Z3_mk_seq_empty.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_seq_unit.restype = Ast
@@ -426,24 +408,16 @@ _lib.Z3_mk_seq_suffix.restype = Ast
 _lib.Z3_mk_seq_suffix.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_seq_contains.restype = Ast
 _lib.Z3_mk_seq_contains.argtypes = [ContextObj, Ast, Ast]
-_lib.Z3_mk_str_lt.restype = Ast
-_lib.Z3_mk_str_lt.argtypes = [ContextObj, Ast, Ast]
-_lib.Z3_mk_str_le.restype = Ast
-_lib.Z3_mk_str_le.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_seq_extract.restype = Ast
 _lib.Z3_mk_seq_extract.argtypes = [ContextObj, Ast, Ast, Ast]
 _lib.Z3_mk_seq_replace.restype = Ast
 _lib.Z3_mk_seq_replace.argtypes = [ContextObj, Ast, Ast, Ast]
 _lib.Z3_mk_seq_at.restype = Ast
 _lib.Z3_mk_seq_at.argtypes = [ContextObj, Ast, Ast]
-_lib.Z3_mk_seq_nth.restype = Ast
-_lib.Z3_mk_seq_nth.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_seq_length.restype = Ast
 _lib.Z3_mk_seq_length.argtypes = [ContextObj, Ast]
 _lib.Z3_mk_seq_index.restype = Ast
 _lib.Z3_mk_seq_index.argtypes = [ContextObj, Ast, Ast, Ast]
-_lib.Z3_mk_seq_last_index.restype = Ast
-_lib.Z3_mk_seq_last_index.argtypes = [ContextObj, Ast, Ast]
 _lib.Z3_mk_str_to_int.restype = Ast
 _lib.Z3_mk_str_to_int.argtypes = [ContextObj, Ast]
 _lib.Z3_mk_int_to_str.restype = Ast
@@ -474,16 +448,6 @@ _lib.Z3_mk_re_empty.restype = Ast
 _lib.Z3_mk_re_empty.argtypes = [ContextObj, Sort]
 _lib.Z3_mk_re_full.restype = Ast
 _lib.Z3_mk_re_full.argtypes = [ContextObj, Sort]
-_lib.Z3_mk_linear_order.restype = FuncDecl
-_lib.Z3_mk_linear_order.argtypes = [ContextObj, Sort, ctypes.c_uint]
-_lib.Z3_mk_partial_order.restype = FuncDecl
-_lib.Z3_mk_partial_order.argtypes = [ContextObj, Sort, ctypes.c_uint]
-_lib.Z3_mk_piecewise_linear_order.restype = FuncDecl
-_lib.Z3_mk_piecewise_linear_order.argtypes = [ContextObj, Sort, ctypes.c_uint]
-_lib.Z3_mk_tree_order.restype = FuncDecl
-_lib.Z3_mk_tree_order.argtypes = [ContextObj, Sort, ctypes.c_uint]
-_lib.Z3_mk_transitive_closure.restype = FuncDecl
-_lib.Z3_mk_transitive_closure.argtypes = [ContextObj, FuncDecl]
 _lib.Z3_mk_pattern.restype = Pattern
 _lib.Z3_mk_pattern.argtypes = [ContextObj, ctypes.c_uint, ctypes.POINTER(Ast)]
 _lib.Z3_mk_bound.restype = Ast
@@ -504,10 +468,6 @@ _lib.Z3_mk_quantifier_const.restype = Ast
 _lib.Z3_mk_quantifier_const.argtypes = [ContextObj, ctypes.c_bool, ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(Ast), ctypes.c_uint, ctypes.POINTER(Pattern), Ast]
 _lib.Z3_mk_quantifier_const_ex.restype = Ast
 _lib.Z3_mk_quantifier_const_ex.argtypes = [ContextObj, ctypes.c_bool, ctypes.c_uint, Symbol, Symbol, ctypes.c_uint, ctypes.POINTER(Ast), ctypes.c_uint, ctypes.POINTER(Pattern), ctypes.c_uint, ctypes.POINTER(Ast), Ast]
-_lib.Z3_mk_lambda.restype = Ast
-_lib.Z3_mk_lambda.argtypes = [ContextObj, ctypes.c_uint, ctypes.POINTER(Sort), ctypes.POINTER(Symbol), Ast]
-_lib.Z3_mk_lambda_const.restype = Ast
-_lib.Z3_mk_lambda_const.argtypes = [ContextObj, ctypes.c_uint, ctypes.POINTER(Ast), Ast]
 _lib.Z3_get_symbol_kind.restype = ctypes.c_uint
 _lib.Z3_get_symbol_kind.argtypes = [ContextObj, Symbol]
 _lib.Z3_get_symbol_int.restype = ctypes.c_int
@@ -634,8 +594,6 @@ _lib.Z3_get_numeral_string.restype = ctypes.c_char_p
 _lib.Z3_get_numeral_string.argtypes = [ContextObj, Ast]
 _lib.Z3_get_numeral_decimal_string.restype = ctypes.c_char_p
 _lib.Z3_get_numeral_decimal_string.argtypes = [ContextObj, Ast, ctypes.c_uint]
-_lib.Z3_get_numeral_double.restype = ctypes.c_double
-_lib.Z3_get_numeral_double.argtypes = [ContextObj, Ast]
 _lib.Z3_get_numerator.restype = Ast
 _lib.Z3_get_numerator.argtypes = [ContextObj, Ast]
 _lib.Z3_get_denominator.restype = Ast
@@ -666,10 +624,6 @@ _lib.Z3_get_index_value.restype = ctypes.c_uint
 _lib.Z3_get_index_value.argtypes = [ContextObj, Ast]
 _lib.Z3_is_quantifier_forall.restype = ctypes.c_bool
 _lib.Z3_is_quantifier_forall.argtypes = [ContextObj, Ast]
-_lib.Z3_is_quantifier_exists.restype = ctypes.c_bool
-_lib.Z3_is_quantifier_exists.argtypes = [ContextObj, Ast]
-_lib.Z3_is_lambda.restype = ctypes.c_bool
-_lib.Z3_is_lambda.argtypes = [ContextObj, Ast]
 _lib.Z3_get_quantifier_weight.restype = ctypes.c_uint
 _lib.Z3_get_quantifier_weight.argtypes = [ContextObj, Ast]
 _lib.Z3_get_quantifier_num_patterns.restype = ctypes.c_uint
@@ -777,12 +731,14 @@ _lib.Z3_model_to_string.restype = ctypes.c_char_p
 _lib.Z3_model_to_string.argtypes = [ContextObj, Model]
 _lib.Z3_benchmark_to_smtlib_string.restype = ctypes.c_char_p
 _lib.Z3_benchmark_to_smtlib_string.argtypes = [ContextObj, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(Ast), Ast]
-_lib.Z3_parse_smtlib2_string.restype = AstVectorObj
+_lib.Z3_parse_smtlib2_string.restype = Ast
 _lib.Z3_parse_smtlib2_string.argtypes = [ContextObj, ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(Symbol), ctypes.POINTER(Sort), ctypes.c_uint, ctypes.POINTER(Symbol), ctypes.POINTER(FuncDecl)]
-_lib.Z3_parse_smtlib2_file.restype = AstVectorObj
+_lib.Z3_parse_smtlib2_file.restype = Ast
 _lib.Z3_parse_smtlib2_file.argtypes = [ContextObj, ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(Symbol), ctypes.POINTER(Sort), ctypes.c_uint, ctypes.POINTER(Symbol), ctypes.POINTER(FuncDecl)]
 _lib.Z3_eval_smtlib2_string.restype = ctypes.c_char_p
 _lib.Z3_eval_smtlib2_string.argtypes = [ContextObj, ctypes.c_char_p]
+_lib.Z3_get_parser_error.restype = ctypes.c_char_p
+_lib.Z3_get_parser_error.argtypes = [ContextObj]
 _lib.Z3_get_error_code.restype = ctypes.c_uint
 _lib.Z3_get_error_code.argtypes = [ContextObj]
 _lib.Z3_set_error.argtypes = [ContextObj, ctypes.c_uint]
@@ -819,12 +775,8 @@ _lib.Z3_goal_is_decided_unsat.restype = ctypes.c_bool
 _lib.Z3_goal_is_decided_unsat.argtypes = [ContextObj, GoalObj]
 _lib.Z3_goal_translate.restype = GoalObj
 _lib.Z3_goal_translate.argtypes = [ContextObj, GoalObj, ContextObj]
-_lib.Z3_goal_convert_model.restype = Model
-_lib.Z3_goal_convert_model.argtypes = [ContextObj, GoalObj, Model]
 _lib.Z3_goal_to_string.restype = ctypes.c_char_p
 _lib.Z3_goal_to_string.argtypes = [ContextObj, GoalObj]
-_lib.Z3_goal_to_dimacs_string.restype = ctypes.c_char_p
-_lib.Z3_goal_to_dimacs_string.argtypes = [ContextObj, GoalObj]
 _lib.Z3_mk_tactic.restype = TacticObj
 _lib.Z3_mk_tactic.argtypes = [ContextObj, ctypes.c_char_p]
 _lib.Z3_tactic_inc_ref.argtypes = [ContextObj, TacticObj]
@@ -907,6 +859,8 @@ _lib.Z3_apply_result_get_num_subgoals.restype = ctypes.c_uint
 _lib.Z3_apply_result_get_num_subgoals.argtypes = [ContextObj, ApplyResultObj]
 _lib.Z3_apply_result_get_subgoal.restype = GoalObj
 _lib.Z3_apply_result_get_subgoal.argtypes = [ContextObj, ApplyResultObj, ctypes.c_uint]
+_lib.Z3_apply_result_convert_model.restype = Model
+_lib.Z3_apply_result_convert_model.argtypes = [ContextObj, ApplyResultObj, ctypes.c_uint, Model]
 _lib.Z3_mk_solver.restype = SolverObj
 _lib.Z3_mk_solver.argtypes = [ContextObj]
 _lib.Z3_mk_simple_solver.restype = SolverObj
@@ -917,7 +871,6 @@ _lib.Z3_mk_solver_from_tactic.restype = SolverObj
 _lib.Z3_mk_solver_from_tactic.argtypes = [ContextObj, TacticObj]
 _lib.Z3_solver_translate.restype = SolverObj
 _lib.Z3_solver_translate.argtypes = [ContextObj, SolverObj, ContextObj]
-_lib.Z3_solver_import_model_converter.argtypes = [ContextObj, SolverObj, SolverObj]
 _lib.Z3_solver_get_help.restype = ctypes.c_char_p
 _lib.Z3_solver_get_help.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_get_param_descrs.restype = ParamDescrs
@@ -925,7 +878,6 @@ _lib.Z3_solver_get_param_descrs.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_set_params.argtypes = [ContextObj, SolverObj, Params]
 _lib.Z3_solver_inc_ref.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_dec_ref.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_interrupt.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_push.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_pop.argtypes = [ContextObj, SolverObj, ctypes.c_uint]
 _lib.Z3_solver_reset.argtypes = [ContextObj, SolverObj]
@@ -933,17 +885,10 @@ _lib.Z3_solver_get_num_scopes.restype = ctypes.c_uint
 _lib.Z3_solver_get_num_scopes.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_assert.argtypes = [ContextObj, SolverObj, Ast]
 _lib.Z3_solver_assert_and_track.argtypes = [ContextObj, SolverObj, Ast, Ast]
-_lib.Z3_solver_from_file.argtypes = [ContextObj, SolverObj, ctypes.c_char_p]
-_lib.Z3_solver_from_string.argtypes = [ContextObj, SolverObj, ctypes.c_char_p]
 _lib.Z3_solver_get_assertions.restype = AstVectorObj
 _lib.Z3_solver_get_assertions.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_get_units.restype = AstVectorObj
-_lib.Z3_solver_get_units.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_get_trail.restype = AstVectorObj
-_lib.Z3_solver_get_trail.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_get_non_units.restype = AstVectorObj
-_lib.Z3_solver_get_non_units.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_get_levels.argtypes = [ContextObj, SolverObj, AstVectorObj, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+_lib.Z3_solver_from_file.argtypes = [ContextObj, SolverObj, ctypes.c_char_p]
+_lib.Z3_solver_from_string.argtypes = [ContextObj, SolverObj, ctypes.c_char_p]
 _lib.Z3_solver_check.restype = ctypes.c_int
 _lib.Z3_solver_check.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_check_assumptions.restype = ctypes.c_int
@@ -952,8 +897,6 @@ _lib.Z3_get_implied_equalities.restype = ctypes.c_int
 _lib.Z3_get_implied_equalities.argtypes = [ContextObj, SolverObj, ctypes.c_uint, ctypes.POINTER(Ast), ctypes.POINTER(ctypes.c_uint)]
 _lib.Z3_solver_get_consequences.restype = ctypes.c_int
 _lib.Z3_solver_get_consequences.argtypes = [ContextObj, SolverObj, AstVectorObj, AstVectorObj, AstVectorObj]
-_lib.Z3_solver_cube.restype = AstVectorObj
-_lib.Z3_solver_cube.argtypes = [ContextObj, SolverObj, AstVectorObj, ctypes.c_uint]
 _lib.Z3_solver_get_model.restype = Model
 _lib.Z3_solver_get_model.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_get_proof.restype = Ast
@@ -966,8 +909,6 @@ _lib.Z3_solver_get_statistics.restype = StatsObj
 _lib.Z3_solver_get_statistics.argtypes = [ContextObj, SolverObj]
 _lib.Z3_solver_to_string.restype = ctypes.c_char_p
 _lib.Z3_solver_to_string.argtypes = [ContextObj, SolverObj]
-_lib.Z3_solver_to_dimacs_string.restype = ctypes.c_char_p
-_lib.Z3_solver_to_dimacs_string.argtypes = [ContextObj, SolverObj, ctypes.c_bool]
 _lib.Z3_stats_to_string.restype = ctypes.c_char_p
 _lib.Z3_stats_to_string.argtypes = [ContextObj, StatsObj]
 _lib.Z3_stats_inc_ref.argtypes = [ContextObj, StatsObj]
@@ -1056,10 +997,6 @@ _lib.Z3_algebraic_roots.restype = AstVectorObj
 _lib.Z3_algebraic_roots.argtypes = [ContextObj, Ast, ctypes.c_uint, ctypes.POINTER(Ast)]
 _lib.Z3_algebraic_eval.restype = ctypes.c_int
 _lib.Z3_algebraic_eval.argtypes = [ContextObj, Ast, ctypes.c_uint, ctypes.POINTER(Ast)]
-_lib.Z3_algebraic_get_poly.restype = AstVectorObj
-_lib.Z3_algebraic_get_poly.argtypes = [ContextObj, Ast]
-_lib.Z3_algebraic_get_i.restype = ctypes.c_uint
-_lib.Z3_algebraic_get_i.argtypes = [ContextObj, Ast]
 _lib.Z3_polynomial_subresultants.restype = AstVectorObj
 _lib.Z3_polynomial_subresultants.argtypes = [ContextObj, Ast, Ast, Ast]
 _lib.Z3_rcf_del.argtypes = [ContextObj, RCFNumObj]
@@ -1146,12 +1083,13 @@ _lib.Z3_fixedpoint_from_string.restype = AstVectorObj
 _lib.Z3_fixedpoint_from_string.argtypes = [ContextObj, FixedpointObj, ctypes.c_char_p]
 _lib.Z3_fixedpoint_from_file.restype = AstVectorObj
 _lib.Z3_fixedpoint_from_file.argtypes = [ContextObj, FixedpointObj, ctypes.c_char_p]
+_lib.Z3_fixedpoint_push.argtypes = [ContextObj, FixedpointObj]
+_lib.Z3_fixedpoint_pop.argtypes = [ContextObj, FixedpointObj]
 _lib.Z3_mk_optimize.restype = OptimizeObj
 _lib.Z3_mk_optimize.argtypes = [ContextObj]
 _lib.Z3_optimize_inc_ref.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_dec_ref.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_assert.argtypes = [ContextObj, OptimizeObj, Ast]
-_lib.Z3_optimize_assert_and_track.argtypes = [ContextObj, OptimizeObj, Ast, Ast]
 _lib.Z3_optimize_assert_soft.restype = ctypes.c_uint
 _lib.Z3_optimize_assert_soft.argtypes = [ContextObj, OptimizeObj, Ast, ctypes.c_char_p, Symbol]
 _lib.Z3_optimize_maximize.restype = ctypes.c_uint
@@ -1161,13 +1099,11 @@ _lib.Z3_optimize_minimize.argtypes = [ContextObj, OptimizeObj, Ast]
 _lib.Z3_optimize_push.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_pop.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_check.restype = ctypes.c_int
-_lib.Z3_optimize_check.argtypes = [ContextObj, OptimizeObj, ctypes.c_uint, ctypes.POINTER(Ast)]
+_lib.Z3_optimize_check.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_get_reason_unknown.restype = ctypes.c_char_p
 _lib.Z3_optimize_get_reason_unknown.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_get_model.restype = Model
 _lib.Z3_optimize_get_model.argtypes = [ContextObj, OptimizeObj]
-_lib.Z3_optimize_get_unsat_core.restype = AstVectorObj
-_lib.Z3_optimize_get_unsat_core.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_set_params.argtypes = [ContextObj, OptimizeObj, Params]
 _lib.Z3_optimize_get_param_descrs.restype = ParamDescrs
 _lib.Z3_optimize_get_param_descrs.argtypes = [ContextObj, OptimizeObj]
@@ -1191,6 +1127,21 @@ _lib.Z3_optimize_get_assertions.restype = AstVectorObj
 _lib.Z3_optimize_get_assertions.argtypes = [ContextObj, OptimizeObj]
 _lib.Z3_optimize_get_objectives.restype = AstVectorObj
 _lib.Z3_optimize_get_objectives.argtypes = [ContextObj, OptimizeObj]
+_lib.Z3_mk_interpolant.restype = Ast
+_lib.Z3_mk_interpolant.argtypes = [ContextObj, Ast]
+_lib.Z3_mk_interpolation_context.restype = ContextObj
+_lib.Z3_mk_interpolation_context.argtypes = [Config]
+_lib.Z3_get_interpolant.restype = AstVectorObj
+_lib.Z3_get_interpolant.argtypes = [ContextObj, Ast, Ast, Params]
+_lib.Z3_compute_interpolant.restype = ctypes.c_int
+_lib.Z3_compute_interpolant.argtypes = [ContextObj, Ast, Params, ctypes.POINTER(AstVectorObj), ctypes.POINTER(Model)]
+_lib.Z3_interpolation_profile.restype = ctypes.c_char_p
+_lib.Z3_interpolation_profile.argtypes = [ContextObj]
+_lib.Z3_read_interpolation_problem.restype = ctypes.c_int
+_lib.Z3_read_interpolation_problem.argtypes = [ContextObj, ctypes.POINTER(ctypes.c_uint), Ast, ctypes.c_uint, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint), Ast]
+_lib.Z3_check_interpolant.restype = ctypes.c_int
+_lib.Z3_check_interpolant.argtypes = [ContextObj, ctypes.c_uint, ctypes.POINTER(Ast), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(Ast), ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.POINTER(Ast)]
+_lib.Z3_write_interpolation_problem.argtypes = [ContextObj, ctypes.c_uint, ctypes.POINTER(Ast), ctypes.POINTER(ctypes.c_uint), ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(Ast)]
 _lib.Z3_mk_fpa_rounding_mode_sort.restype = Sort
 _lib.Z3_mk_fpa_rounding_mode_sort.argtypes = [ContextObj]
 _lib.Z3_mk_fpa_round_nearest_ties_to_even.restype = Ast
@@ -1391,13 +1342,13 @@ def Z3_set_error_handler(ctx, hndlr, _elems=Elementaries(_lib.Z3_set_error_handl
   return ceh
 
 def Z3_global_param_set(a0, a1, _elems=Elementaries(_lib.Z3_global_param_set)):
-  _elems.f(_str_to_bytes(a0), _str_to_bytes(a1))
+  _elems.f(_to_ascii(a0), _to_ascii(a1))
 
 def Z3_global_param_reset_all(_elems=Elementaries(_lib.Z3_global_param_reset_all)):
   _elems.f()
 
 def Z3_global_param_get(a0, a1, _elems=Elementaries(_lib.Z3_global_param_get)):
-  r = _elems.f(_str_to_bytes(a0), _str_to_bytes(a1))
+  r = _elems.f(_to_ascii(a0), _to_ascii(a1))
   return r
 
 def Z3_mk_config(_elems=Elementaries(_lib.Z3_mk_config)):
@@ -1408,7 +1359,7 @@ def Z3_del_config(a0, _elems=Elementaries(_lib.Z3_del_config)):
   _elems.f(a0)
 
 def Z3_set_param_value(a0, a1, a2, _elems=Elementaries(_lib.Z3_set_param_value)):
-  _elems.f(a0, _str_to_bytes(a1), _str_to_bytes(a2))
+  _elems.f(a0, _to_ascii(a1), _to_ascii(a2))
 
 def Z3_mk_context(a0, _elems=Elementaries(_lib.Z3_mk_context)):
   r = _elems.f(a0)
@@ -1430,7 +1381,7 @@ def Z3_dec_ref(a0, a1, _elems=Elementaries(_lib.Z3_dec_ref)):
   _elems.Check(a0)
 
 def Z3_update_param_value(a0, a1, a2, _elems=Elementaries(_lib.Z3_update_param_value)):
-  _elems.f(a0, _str_to_bytes(a1), _str_to_bytes(a2))
+  _elems.f(a0, _to_ascii(a1), _to_ascii(a2))
   _elems.Check(a0)
 
 def Z3_interrupt(a0, _elems=Elementaries(_lib.Z3_interrupt)):
@@ -1471,11 +1422,6 @@ def Z3_params_to_string(a0, a1, _elems=Elementaries(_lib.Z3_params_to_string)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_params_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_params_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_params_validate(a0, a1, a2, _elems=Elementaries(_lib.Z3_params_validate)):
   _elems.f(a0, a1, a2)
   _elems.Check(a0)
@@ -1508,20 +1454,10 @@ def Z3_param_descrs_get_documentation(a0, a1, a2, _elems=Elementaries(_lib.Z3_pa
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_param_descrs_get_documentation_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_param_descrs_get_documentation)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_param_descrs_to_string(a0, a1, _elems=Elementaries(_lib.Z3_param_descrs_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_param_descrs_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_param_descrs_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_mk_int_symbol(a0, a1, _elems=Elementaries(_lib.Z3_mk_int_symbol)):
   r = _elems.f(a0, a1)
@@ -1529,7 +1465,7 @@ def Z3_mk_int_symbol(a0, a1, _elems=Elementaries(_lib.Z3_mk_int_symbol)):
   return r
 
 def Z3_mk_string_symbol(a0, a1, _elems=Elementaries(_lib.Z3_mk_string_symbol)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return r
 
@@ -1635,23 +1571,14 @@ def Z3_mk_const(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_const)):
   return r
 
 def Z3_mk_fresh_func_decl(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_mk_fresh_func_decl)):
-  r = _elems.f(a0, _str_to_bytes(a1), a2, a3, a4)
+  r = _elems.f(a0, _to_ascii(a1), a2, a3, a4)
   _elems.Check(a0)
   return r
 
 def Z3_mk_fresh_const(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_fresh_const)):
-  r = _elems.f(a0, _str_to_bytes(a1), a2)
+  r = _elems.f(a0, _to_ascii(a1), a2)
   _elems.Check(a0)
   return r
-
-def Z3_mk_rec_func_decl(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_mk_rec_func_decl)):
-  r = _elems.f(a0, a1, a2, a3, a4)
-  _elems.Check(a0)
-  return r
-
-def Z3_add_rec_def(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_add_rec_def)):
-  _elems.f(a0, a1, a2, a3, a4)
-  _elems.Check(a0)
 
 def Z3_mk_true(a0, _elems=Elementaries(_lib.Z3_mk_true)):
   r = _elems.f(a0)
@@ -1764,11 +1691,6 @@ def Z3_mk_gt(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_gt)):
   return r
 
 def Z3_mk_ge(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_ge)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_divides(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_divides)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return r
@@ -2068,11 +1990,6 @@ def Z3_mk_as_array(a0, a1, _elems=Elementaries(_lib.Z3_mk_as_array)):
   _elems.Check(a0)
   return r
 
-def Z3_mk_set_has_size(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_set_has_size)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_set_sort(a0, a1, _elems=Elementaries(_lib.Z3_mk_set_sort)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -2134,7 +2051,7 @@ def Z3_mk_array_ext(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_array_ext)):
   return r
 
 def Z3_mk_numeral(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_numeral)):
-  r = _elems.f(a0, _str_to_bytes(a1), a2)
+  r = _elems.f(a0, _to_ascii(a1), a2)
   _elems.Check(a0)
   return r
 
@@ -2178,22 +2095,12 @@ def Z3_is_seq_sort(a0, a1, _elems=Elementaries(_lib.Z3_is_seq_sort)):
   _elems.Check(a0)
   return r
 
-def Z3_get_seq_sort_basis(a0, a1, _elems=Elementaries(_lib.Z3_get_seq_sort_basis)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_re_sort(a0, a1, _elems=Elementaries(_lib.Z3_mk_re_sort)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
 
 def Z3_is_re_sort(a0, a1, _elems=Elementaries(_lib.Z3_is_re_sort)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_get_re_sort_basis(a0, a1, _elems=Elementaries(_lib.Z3_get_re_sort_basis)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
@@ -2209,12 +2116,7 @@ def Z3_is_string_sort(a0, a1, _elems=Elementaries(_lib.Z3_is_string_sort)):
   return r
 
 def Z3_mk_string(a0, a1, _elems=Elementaries(_lib.Z3_mk_string)):
-  r = _elems.f(a0, _str_to_bytes(a1))
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_lstring(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_lstring)):
-  r = _elems.f(a0, a1, _str_to_bytes(a2))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return r
 
@@ -2227,16 +2129,6 @@ def Z3_get_string(a0, a1, _elems=Elementaries(_lib.Z3_get_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_get_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_get_lstring(a0, a1, a2, _elems=Elementaries(_lib.Z3_get_lstring)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
 
 def Z3_mk_seq_empty(a0, a1, _elems=Elementaries(_lib.Z3_mk_seq_empty)):
   r = _elems.f(a0, a1)
@@ -2268,16 +2160,6 @@ def Z3_mk_seq_contains(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_seq_contains))
   _elems.Check(a0)
   return r
 
-def Z3_mk_str_lt(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_str_lt)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_str_le(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_str_le)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_seq_extract(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_mk_seq_extract)):
   r = _elems.f(a0, a1, a2, a3)
   _elems.Check(a0)
@@ -2293,11 +2175,6 @@ def Z3_mk_seq_at(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_seq_at)):
   _elems.Check(a0)
   return r
 
-def Z3_mk_seq_nth(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_seq_nth)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_seq_length(a0, a1, _elems=Elementaries(_lib.Z3_mk_seq_length)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -2305,11 +2182,6 @@ def Z3_mk_seq_length(a0, a1, _elems=Elementaries(_lib.Z3_mk_seq_length)):
 
 def Z3_mk_seq_index(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_mk_seq_index)):
   r = _elems.f(a0, a1, a2, a3)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_seq_last_index(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_seq_last_index)):
-  r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return r
 
@@ -2388,31 +2260,6 @@ def Z3_mk_re_full(a0, a1, _elems=Elementaries(_lib.Z3_mk_re_full)):
   _elems.Check(a0)
   return r
 
-def Z3_mk_linear_order(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_linear_order)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_partial_order(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_partial_order)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_piecewise_linear_order(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_piecewise_linear_order)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_tree_order(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_tree_order)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_transitive_closure(a0, a1, _elems=Elementaries(_lib.Z3_mk_transitive_closure)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_pattern(a0, a1, a2, _elems=Elementaries(_lib.Z3_mk_pattern)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
@@ -2463,16 +2310,6 @@ def Z3_mk_quantifier_const_ex(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, 
   _elems.Check(a0)
   return r
 
-def Z3_mk_lambda(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_mk_lambda)):
-  r = _elems.f(a0, a1, a2, a3, a4)
-  _elems.Check(a0)
-  return r
-
-def Z3_mk_lambda_const(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_mk_lambda_const)):
-  r = _elems.f(a0, a1, a2, a3)
-  _elems.Check(a0)
-  return r
-
 def Z3_get_symbol_kind(a0, a1, _elems=Elementaries(_lib.Z3_get_symbol_kind)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -2487,11 +2324,6 @@ def Z3_get_symbol_string(a0, a1, _elems=Elementaries(_lib.Z3_get_symbol_string))
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_get_symbol_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_symbol_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_get_sort_name(a0, a1, _elems=Elementaries(_lib.Z3_get_sort_name)):
   r = _elems.f(a0, a1)
@@ -2703,11 +2535,6 @@ def Z3_get_decl_rational_parameter(a0, a1, a2, _elems=Elementaries(_lib.Z3_get_d
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_get_decl_rational_parameter_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_get_decl_rational_parameter)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_app_to_ast(a0, a1, _elems=Elementaries(_lib.Z3_app_to_ast)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -2793,25 +2620,10 @@ def Z3_get_numeral_string(a0, a1, _elems=Elementaries(_lib.Z3_get_numeral_string
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_get_numeral_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_numeral_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_get_numeral_decimal_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_get_numeral_decimal_string)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_get_numeral_decimal_string_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_get_numeral_decimal_string)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
-def Z3_get_numeral_double(a0, a1, _elems=Elementaries(_lib.Z3_get_numeral_double)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_get_numerator(a0, a1, _elems=Elementaries(_lib.Z3_get_numerator)):
   r = _elems.f(a0, a1)
@@ -2888,16 +2700,6 @@ def Z3_is_quantifier_forall(a0, a1, _elems=Elementaries(_lib.Z3_is_quantifier_fo
   _elems.Check(a0)
   return r
 
-def Z3_is_quantifier_exists(a0, a1, _elems=Elementaries(_lib.Z3_is_quantifier_exists)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_is_lambda(a0, a1, _elems=Elementaries(_lib.Z3_is_lambda)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_get_quantifier_weight(a0, a1, _elems=Elementaries(_lib.Z3_get_quantifier_weight)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -2957,11 +2759,6 @@ def Z3_simplify_get_help(a0, _elems=Elementaries(_lib.Z3_simplify_get_help)):
   r = _elems.f(a0)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_simplify_get_help_bytes(a0, _elems=Elementaries(_lib.Z3_simplify_get_help)):
-  r = _elems.f(a0)
-  _elems.Check(a0)
-  return r
 
 def Z3_simplify_get_param_descrs(a0, _elems=Elementaries(_lib.Z3_simplify_get_param_descrs)):
   r = _elems.f(a0)
@@ -3140,11 +2937,11 @@ def Z3_func_entry_get_arg(a0, a1, a2, _elems=Elementaries(_lib.Z3_func_entry_get
   return r
 
 def Z3_open_log(a0, _elems=Elementaries(_lib.Z3_open_log)):
-  r = _elems.f(_str_to_bytes(a0))
+  r = _elems.f(_to_ascii(a0))
   return r
 
 def Z3_append_log(a0, _elems=Elementaries(_lib.Z3_append_log)):
-  _elems.f(_str_to_bytes(a0))
+  _elems.f(_to_ascii(a0))
 
 def Z3_close_log(_elems=Elementaries(_lib.Z3_close_log)):
   _elems.f()
@@ -3161,80 +2958,50 @@ def Z3_ast_to_string(a0, a1, _elems=Elementaries(_lib.Z3_ast_to_string)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_ast_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_ast_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_pattern_to_string(a0, a1, _elems=Elementaries(_lib.Z3_pattern_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_pattern_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_pattern_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_sort_to_string(a0, a1, _elems=Elementaries(_lib.Z3_sort_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_sort_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_sort_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_func_decl_to_string(a0, a1, _elems=Elementaries(_lib.Z3_func_decl_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_func_decl_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_func_decl_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_model_to_string(a0, a1, _elems=Elementaries(_lib.Z3_model_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_model_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_model_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_benchmark_to_smtlib_string(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_benchmark_to_smtlib_string)):
-  r = _elems.f(a0, _str_to_bytes(a1), _str_to_bytes(a2), _str_to_bytes(a3), _str_to_bytes(a4), a5, a6, a7)
+  r = _elems.f(a0, _to_ascii(a1), _to_ascii(a2), _to_ascii(a3), _to_ascii(a4), a5, a6, a7)
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_benchmark_to_smtlib_string_bytes(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_benchmark_to_smtlib_string)):
-  r = _elems.f(a0, _str_to_bytes(a1), _str_to_bytes(a2), _str_to_bytes(a3), _str_to_bytes(a4), a5, a6, a7)
-  _elems.Check(a0)
-  return r
-
 def Z3_parse_smtlib2_string(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_parse_smtlib2_string)):
-  r = _elems.f(a0, _str_to_bytes(a1), a2, a3, a4, a5, a6, a7)
+  r = _elems.f(a0, _to_ascii(a1), a2, a3, a4, a5, a6, a7)
   _elems.Check(a0)
   return r
 
 def Z3_parse_smtlib2_file(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_parse_smtlib2_file)):
-  r = _elems.f(a0, _str_to_bytes(a1), a2, a3, a4, a5, a6, a7)
+  r = _elems.f(a0, _to_ascii(a1), a2, a3, a4, a5, a6, a7)
   _elems.Check(a0)
   return r
 
 def Z3_eval_smtlib2_string(a0, a1, _elems=Elementaries(_lib.Z3_eval_smtlib2_string)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_eval_smtlib2_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_eval_smtlib2_string)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+def Z3_get_parser_error(a0, _elems=Elementaries(_lib.Z3_get_parser_error)):
+  r = _elems.f(a0)
   _elems.Check(a0)
-  return r
+  return _to_pystr(r)
 
 def Z3_get_error_code(a0, _elems=Elementaries(_lib.Z3_get_error_code)):
   r = _elems.f(a0)
@@ -3249,11 +3016,6 @@ def Z3_get_error_msg(a0, a1, _elems=Elementaries(_lib.Z3_get_error_msg)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_get_error_msg_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_error_msg)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_get_version(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_get_version)):
   _elems.f(a0, a1, a2, a3)
 
@@ -3261,15 +3023,11 @@ def Z3_get_full_version(_elems=Elementaries(_lib.Z3_get_full_version)):
   r = _elems.f()
   return _to_pystr(r)
 
-def Z3_get_full_version_bytes(_elems=Elementaries(_lib.Z3_get_full_version)):
-  r = _elems.f()
-  return r
-
 def Z3_enable_trace(a0, _elems=Elementaries(_lib.Z3_enable_trace)):
-  _elems.f(_str_to_bytes(a0))
+  _elems.f(_to_ascii(a0))
 
 def Z3_disable_trace(a0, _elems=Elementaries(_lib.Z3_disable_trace)):
-  _elems.f(_str_to_bytes(a0))
+  _elems.f(_to_ascii(a0))
 
 def Z3_reset_memory(_elems=Elementaries(_lib.Z3_reset_memory)):
   _elems.f()
@@ -3343,33 +3101,13 @@ def Z3_goal_translate(a0, a1, a2, _elems=Elementaries(_lib.Z3_goal_translate)):
   _elems.Check(a0)
   return r
 
-def Z3_goal_convert_model(a0, a1, a2, _elems=Elementaries(_lib.Z3_goal_convert_model)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_goal_to_string(a0, a1, _elems=Elementaries(_lib.Z3_goal_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_goal_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_goal_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_goal_to_dimacs_string(a0, a1, _elems=Elementaries(_lib.Z3_goal_to_dimacs_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return _to_pystr(r)
-
-def Z3_goal_to_dimacs_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_goal_to_dimacs_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_tactic(a0, a1, _elems=Elementaries(_lib.Z3_mk_tactic)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return r
 
@@ -3382,7 +3120,7 @@ def Z3_tactic_dec_ref(a0, a1, _elems=Elementaries(_lib.Z3_tactic_dec_ref)):
   _elems.Check(a0)
 
 def Z3_mk_probe(a0, a1, _elems=Elementaries(_lib.Z3_mk_probe)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return r
 
@@ -3514,11 +3252,6 @@ def Z3_get_tactic_name(a0, a1, _elems=Elementaries(_lib.Z3_get_tactic_name)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_get_tactic_name_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_tactic_name)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_get_num_probes(a0, _elems=Elementaries(_lib.Z3_get_num_probes)):
   r = _elems.f(a0)
   _elems.Check(a0)
@@ -3529,20 +3262,10 @@ def Z3_get_probe_name(a0, a1, _elems=Elementaries(_lib.Z3_get_probe_name)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_get_probe_name_bytes(a0, a1, _elems=Elementaries(_lib.Z3_get_probe_name)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_tactic_get_help(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_help)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_tactic_get_help_bytes(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_help)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_tactic_get_param_descrs(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_param_descrs)):
   r = _elems.f(a0, a1)
@@ -3550,24 +3273,14 @@ def Z3_tactic_get_param_descrs(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_pa
   return r
 
 def Z3_tactic_get_descr(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_descr)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_tactic_get_descr_bytes(a0, a1, _elems=Elementaries(_lib.Z3_tactic_get_descr)):
-  r = _elems.f(a0, _str_to_bytes(a1))
-  _elems.Check(a0)
-  return r
 
 def Z3_probe_get_descr(a0, a1, _elems=Elementaries(_lib.Z3_probe_get_descr)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_probe_get_descr_bytes(a0, a1, _elems=Elementaries(_lib.Z3_probe_get_descr)):
-  r = _elems.f(a0, _str_to_bytes(a1))
-  _elems.Check(a0)
-  return r
 
 def Z3_probe_apply(a0, a1, a2, _elems=Elementaries(_lib.Z3_probe_apply)):
   r = _elems.f(a0, a1, a2)
@@ -3597,11 +3310,6 @@ def Z3_apply_result_to_string(a0, a1, _elems=Elementaries(_lib.Z3_apply_result_t
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_apply_result_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_apply_result_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_apply_result_get_num_subgoals(a0, a1, _elems=Elementaries(_lib.Z3_apply_result_get_num_subgoals)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -3609,6 +3317,11 @@ def Z3_apply_result_get_num_subgoals(a0, a1, _elems=Elementaries(_lib.Z3_apply_r
 
 def Z3_apply_result_get_subgoal(a0, a1, a2, _elems=Elementaries(_lib.Z3_apply_result_get_subgoal)):
   r = _elems.f(a0, a1, a2)
+  _elems.Check(a0)
+  return r
+
+def Z3_apply_result_convert_model(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_apply_result_convert_model)):
+  r = _elems.f(a0, a1, a2, a3)
   _elems.Check(a0)
   return r
 
@@ -3637,19 +3350,10 @@ def Z3_solver_translate(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_translate
   _elems.Check(a0)
   return r
 
-def Z3_solver_import_model_converter(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_import_model_converter)):
-  _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-
 def Z3_solver_get_help(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_help)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_solver_get_help_bytes(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_help)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_solver_get_param_descrs(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_param_descrs)):
   r = _elems.f(a0, a1)
@@ -3665,10 +3369,6 @@ def Z3_solver_inc_ref(a0, a1, _elems=Elementaries(_lib.Z3_solver_inc_ref)):
   _elems.Check(a0)
 
 def Z3_solver_dec_ref(a0, a1, _elems=Elementaries(_lib.Z3_solver_dec_ref)):
-  _elems.f(a0, a1)
-  _elems.Check(a0)
-
-def Z3_solver_interrupt(a0, a1, _elems=Elementaries(_lib.Z3_solver_interrupt)):
   _elems.f(a0, a1)
   _elems.Check(a0)
 
@@ -3697,36 +3397,17 @@ def Z3_solver_assert_and_track(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_solve
   _elems.f(a0, a1, a2, a3)
   _elems.Check(a0)
 
-def Z3_solver_from_file(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_from_file)):
-  _elems.f(a0, a1, _str_to_bytes(a2))
-  _elems.Check(a0)
-
-def Z3_solver_from_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_from_string)):
-  _elems.f(a0, a1, _str_to_bytes(a2))
-  _elems.Check(a0)
-
 def Z3_solver_get_assertions(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_assertions)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
 
-def Z3_solver_get_units(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_units)):
-  r = _elems.f(a0, a1)
+def Z3_solver_from_file(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_from_file)):
+  _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
-  return r
 
-def Z3_solver_get_trail(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_trail)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_solver_get_non_units(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_non_units)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_solver_get_levels(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_solver_get_levels)):
-  _elems.f(a0, a1, a2, a3, a4)
+def Z3_solver_from_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_from_string)):
+  _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
 
 def Z3_solver_check(a0, a1, _elems=Elementaries(_lib.Z3_solver_check)):
@@ -3746,11 +3427,6 @@ def Z3_get_implied_equalities(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_ge
 
 def Z3_solver_get_consequences(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_solver_get_consequences)):
   r = _elems.f(a0, a1, a2, a3, a4)
-  _elems.Check(a0)
-  return r
-
-def Z3_solver_cube(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_solver_cube)):
-  r = _elems.f(a0, a1, a2, a3)
   _elems.Check(a0)
   return r
 
@@ -3774,11 +3450,6 @@ def Z3_solver_get_reason_unknown(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_solver_get_reason_unknown_bytes(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_reason_unknown)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_solver_get_statistics(a0, a1, _elems=Elementaries(_lib.Z3_solver_get_statistics)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -3789,30 +3460,10 @@ def Z3_solver_to_string(a0, a1, _elems=Elementaries(_lib.Z3_solver_to_string)):
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_solver_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_solver_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_solver_to_dimacs_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_to_dimacs_string)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return _to_pystr(r)
-
-def Z3_solver_to_dimacs_string_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_solver_to_dimacs_string)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
-
 def Z3_stats_to_string(a0, a1, _elems=Elementaries(_lib.Z3_stats_to_string)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_stats_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_stats_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_stats_inc_ref(a0, a1, _elems=Elementaries(_lib.Z3_stats_inc_ref)):
   _elems.f(a0, a1)
@@ -3831,11 +3482,6 @@ def Z3_stats_get_key(a0, a1, a2, _elems=Elementaries(_lib.Z3_stats_get_key)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_stats_get_key_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_stats_get_key)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
 
 def Z3_stats_is_uint(a0, a1, a2, _elems=Elementaries(_lib.Z3_stats_is_uint)):
   r = _elems.f(a0, a1, a2)
@@ -3906,11 +3552,6 @@ def Z3_ast_vector_to_string(a0, a1, _elems=Elementaries(_lib.Z3_ast_vector_to_st
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_ast_vector_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_ast_vector_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_mk_ast_map(a0, _elems=Elementaries(_lib.Z3_mk_ast_map)):
   r = _elems.f(a0)
   _elems.Check(a0)
@@ -3960,11 +3601,6 @@ def Z3_ast_map_to_string(a0, a1, _elems=Elementaries(_lib.Z3_ast_map_to_string))
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_ast_map_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_ast_map_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_algebraic_is_value(a0, a1, _elems=Elementaries(_lib.Z3_algebraic_is_value)):
   r = _elems.f(a0, a1)
@@ -4061,16 +3697,6 @@ def Z3_algebraic_eval(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_algebraic_eval
   _elems.Check(a0)
   return r
 
-def Z3_algebraic_get_poly(a0, a1, _elems=Elementaries(_lib.Z3_algebraic_get_poly)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_algebraic_get_i(a0, a1, _elems=Elementaries(_lib.Z3_algebraic_get_i)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_polynomial_subresultants(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_polynomial_subresultants)):
   r = _elems.f(a0, a1, a2, a3)
   _elems.Check(a0)
@@ -4081,7 +3707,7 @@ def Z3_rcf_del(a0, a1, _elems=Elementaries(_lib.Z3_rcf_del)):
   _elems.Check(a0)
 
 def Z3_rcf_mk_rational(a0, a1, _elems=Elementaries(_lib.Z3_rcf_mk_rational)):
-  r = _elems.f(a0, _str_to_bytes(a1))
+  r = _elems.f(a0, _to_ascii(a1))
   _elems.Check(a0)
   return r
 
@@ -4180,20 +3806,10 @@ def Z3_rcf_num_to_string(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_rcf_num_to_
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_rcf_num_to_string_bytes(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_rcf_num_to_string)):
-  r = _elems.f(a0, a1, a2, a3)
-  _elems.Check(a0)
-  return r
-
 def Z3_rcf_num_to_decimal_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_rcf_num_to_decimal_string)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_rcf_num_to_decimal_string_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_rcf_num_to_decimal_string)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
 
 def Z3_rcf_get_numerator_denominator(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_rcf_get_numerator_denominator)):
   _elems.f(a0, a1, a2, a3)
@@ -4243,11 +3859,6 @@ def Z3_fixedpoint_get_reason_unknown(a0, a1, _elems=Elementaries(_lib.Z3_fixedpo
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_fixedpoint_get_reason_unknown_bytes(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_get_reason_unknown)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_fixedpoint_update_rule(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_fixedpoint_update_rule)):
   _elems.f(a0, a1, a2, a3)
@@ -4299,11 +3910,6 @@ def Z3_fixedpoint_get_help(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_get_he
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_fixedpoint_get_help_bytes(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_get_help)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_fixedpoint_get_param_descrs(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_get_param_descrs)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
@@ -4314,20 +3920,23 @@ def Z3_fixedpoint_to_string(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_fixedpoi
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_fixedpoint_to_string_bytes(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_fixedpoint_to_string)):
-  r = _elems.f(a0, a1, a2, a3)
-  _elems.Check(a0)
-  return r
-
 def Z3_fixedpoint_from_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_fixedpoint_from_string)):
-  r = _elems.f(a0, a1, _str_to_bytes(a2))
+  r = _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
   return r
 
 def Z3_fixedpoint_from_file(a0, a1, a2, _elems=Elementaries(_lib.Z3_fixedpoint_from_file)):
-  r = _elems.f(a0, a1, _str_to_bytes(a2))
+  r = _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
   return r
+
+def Z3_fixedpoint_push(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_push)):
+  _elems.f(a0, a1)
+  _elems.Check(a0)
+
+def Z3_fixedpoint_pop(a0, a1, _elems=Elementaries(_lib.Z3_fixedpoint_pop)):
+  _elems.f(a0, a1)
+  _elems.Check(a0)
 
 def Z3_mk_optimize(a0, _elems=Elementaries(_lib.Z3_mk_optimize)):
   r = _elems.f(a0)
@@ -4346,12 +3955,8 @@ def Z3_optimize_assert(a0, a1, a2, _elems=Elementaries(_lib.Z3_optimize_assert))
   _elems.f(a0, a1, a2)
   _elems.Check(a0)
 
-def Z3_optimize_assert_and_track(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_optimize_assert_and_track)):
-  _elems.f(a0, a1, a2, a3)
-  _elems.Check(a0)
-
 def Z3_optimize_assert_soft(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_optimize_assert_soft)):
-  r = _elems.f(a0, a1, a2, _str_to_bytes(a3), a4)
+  r = _elems.f(a0, a1, a2, _to_ascii(a3), a4)
   _elems.Check(a0)
   return r
 
@@ -4373,8 +3978,8 @@ def Z3_optimize_pop(a0, a1, _elems=Elementaries(_lib.Z3_optimize_pop)):
   _elems.f(a0, a1)
   _elems.Check(a0)
 
-def Z3_optimize_check(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_optimize_check)):
-  r = _elems.f(a0, a1, a2, a3)
+def Z3_optimize_check(a0, a1, _elems=Elementaries(_lib.Z3_optimize_check)):
+  r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
 
@@ -4383,17 +3988,7 @@ def Z3_optimize_get_reason_unknown(a0, a1, _elems=Elementaries(_lib.Z3_optimize_
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_optimize_get_reason_unknown_bytes(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_reason_unknown)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_optimize_get_model(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_model)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
-def Z3_optimize_get_unsat_core(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_unsat_core)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
@@ -4432,28 +4027,18 @@ def Z3_optimize_to_string(a0, a1, _elems=Elementaries(_lib.Z3_optimize_to_string
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_optimize_to_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_optimize_to_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_optimize_from_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_optimize_from_string)):
-  _elems.f(a0, a1, _str_to_bytes(a2))
+  _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
 
 def Z3_optimize_from_file(a0, a1, a2, _elems=Elementaries(_lib.Z3_optimize_from_file)):
-  _elems.f(a0, a1, _str_to_bytes(a2))
+  _elems.f(a0, a1, _to_ascii(a2))
   _elems.Check(a0)
 
 def Z3_optimize_get_help(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_help)):
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_optimize_get_help_bytes(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_help)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
 
 def Z3_optimize_get_statistics(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_statistics)):
   r = _elems.f(a0, a1)
@@ -4469,6 +4054,44 @@ def Z3_optimize_get_objectives(a0, a1, _elems=Elementaries(_lib.Z3_optimize_get_
   r = _elems.f(a0, a1)
   _elems.Check(a0)
   return r
+
+def Z3_mk_interpolant(a0, a1, _elems=Elementaries(_lib.Z3_mk_interpolant)):
+  r = _elems.f(a0, a1)
+  _elems.Check(a0)
+  return r
+
+def Z3_mk_interpolation_context(a0, _elems=Elementaries(_lib.Z3_mk_interpolation_context)):
+  r = _elems.f(a0)
+  return r
+
+def Z3_get_interpolant(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_get_interpolant)):
+  r = _elems.f(a0, a1, a2, a3)
+  _elems.Check(a0)
+  return r
+
+def Z3_compute_interpolant(a0, a1, a2, a3, a4, _elems=Elementaries(_lib.Z3_compute_interpolant)):
+  r = _elems.f(a0, a1, a2, a3, a4)
+  _elems.Check(a0)
+  return r
+
+def Z3_interpolation_profile(a0, _elems=Elementaries(_lib.Z3_interpolation_profile)):
+  r = _elems.f(a0)
+  _elems.Check(a0)
+  return _to_pystr(r)
+
+def Z3_read_interpolation_problem(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_read_interpolation_problem)):
+  r = _elems.f(a0, a1, a2, a3, _to_ascii(a4), _to_ascii(a5), a6, a7)
+  _elems.Check(a0)
+  return r
+
+def Z3_check_interpolant(a0, a1, a2, a3, a4, a5, a6, a7, _elems=Elementaries(_lib.Z3_check_interpolant)):
+  r = _elems.f(a0, a1, a2, a3, a4, _to_ascii(a5), a6, a7)
+  _elems.Check(a0)
+  return r
+
+def Z3_write_interpolation_problem(a0, a1, a2, a3, a4, a5, a6, _elems=Elementaries(_lib.Z3_write_interpolation_problem)):
+  _elems.f(a0, a1, a2, a3, _to_ascii(a4), a5, a6)
+  _elems.Check(a0)
 
 def Z3_mk_fpa_rounding_mode_sort(a0, _elems=Elementaries(_lib.Z3_mk_fpa_rounding_mode_sort)):
   r = _elems.f(a0)
@@ -4840,11 +4463,6 @@ def Z3_fpa_get_numeral_significand_string(a0, a1, _elems=Elementaries(_lib.Z3_fp
   _elems.Check(a0)
   return _to_pystr(r)
 
-def Z3_fpa_get_numeral_significand_string_bytes(a0, a1, _elems=Elementaries(_lib.Z3_fpa_get_numeral_significand_string)):
-  r = _elems.f(a0, a1)
-  _elems.Check(a0)
-  return r
-
 def Z3_fpa_get_numeral_significand_uint64(a0, a1, a2, _elems=Elementaries(_lib.Z3_fpa_get_numeral_significand_uint64)):
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
@@ -4854,11 +4472,6 @@ def Z3_fpa_get_numeral_exponent_string(a0, a1, a2, _elems=Elementaries(_lib.Z3_f
   r = _elems.f(a0, a1, a2)
   _elems.Check(a0)
   return _to_pystr(r)
-
-def Z3_fpa_get_numeral_exponent_string_bytes(a0, a1, a2, _elems=Elementaries(_lib.Z3_fpa_get_numeral_exponent_string)):
-  r = _elems.f(a0, a1, a2)
-  _elems.Check(a0)
-  return r
 
 def Z3_fpa_get_numeral_exponent_int64(a0, a1, a2, a3, _elems=Elementaries(_lib.Z3_fpa_get_numeral_exponent_int64)):
   r = _elems.f(a0, a1, a2, a3)

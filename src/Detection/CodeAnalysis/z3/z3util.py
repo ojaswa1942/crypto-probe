@@ -75,7 +75,7 @@ def ehash(v):
     x_783810685_1 x_783810685_1 x_783810685_2
     
     """
-    if z3_debug():
+    if __debug__:
         assert is_expr(v)
 
     return "{}_{}_{}".format(str(v),v.hash(),v.sort_kind())
@@ -148,7 +148,7 @@ def get_vars(f,rs=[]):
     [x, y, a, b]
 
     """
-    if z3_debug():
+    if __debug__:
         assert is_expr(f)
 
     if is_const(f):
@@ -199,7 +199,7 @@ def prove(claim,assume=None,verbose=0):
     >>> r,m = prove(True,assume=And(x,Not(x)),verbose=0)
     Traceback (most recent call last):
     ...
-    AssertionError: Assumption is always False!
+    AssertionError: Assumption is alway False!
 
     >>> r,m = prove(Implies(x,x),assume=y,verbose=2); r,model_str(m,as_str=False)
     assume: 
@@ -228,17 +228,17 @@ def prove(claim,assume=None,verbose=0):
 
     """
 
-    if z3_debug():
+    if __debug__:
         assert not assume or is_expr(assume)
 
 
     to_prove = claim
     if assume:
-        if z3_debug():
+        if __debug__:
             is_proved,_ = prove(Not(assume))
 
             def _f():
-                emsg = "Assumption is always False!"
+                emsg = "Assumption is alway False!"
                 if verbose >= 2:
                     emsg = "{}\n{}".format(assume,emsg)
                 return emsg
@@ -266,7 +266,7 @@ def prove(claim,assume=None,verbose=0):
     elif models == False: #unsat
         return True,None   
     else: #sat
-        if z3_debug():
+        if __debug__:
             assert isinstance(models,list)
 
         if models:
@@ -312,7 +312,7 @@ def get_models(f,k):
 
     """
 
-    if z3_debug():
+    if __debug__:
         assert is_expr(f)
         assert k>=1
     
@@ -448,13 +448,13 @@ def myBinOp(op,*L):
     AssertionError
     """
 
-    if z3_debug():
+    if __debug__:
         assert op == Z3_OP_OR or op == Z3_OP_AND or op == Z3_OP_IMPLIES
     
     if len(L)==1 and (isinstance(L[0],list) or isinstance(L[0],tuple)):
         L = L[0]
 
-    if z3_debug():
+    if __debug__:
         assert all(not isinstance(l,bool) for l in L)
 
     L = [l for l in L if is_expr(l)]
@@ -493,7 +493,7 @@ def model_str(m,as_str=True):
     see doctest exampels from function prove() 
 
     """
-    if z3_debug():
+    if __debug__:
         assert m is None or m == [] or isinstance(m,ModelRef)
 
     if m :
