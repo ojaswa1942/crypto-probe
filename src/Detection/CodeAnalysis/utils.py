@@ -9,6 +9,8 @@ import os
 import csv
 import re
 import difflib
+import copy
+
 from z3 import *
 from z3.z3util import get_vars
 
@@ -17,6 +19,12 @@ def ceil32(x):
 
 def isSymbolic(value):
     return not isinstance(value, (int, long))
+
+def isAllSymbolic(*args):
+    for element in args:
+        if isReal(element):
+            return False
+    return True
 
 def isReal(value):
     return isinstance(value, (int, long))
@@ -52,19 +60,32 @@ def check_solver(solver):
     try:
         ret = solver.check()
     except Exception as e:
-        solver.pop()
-        raise e
+        #print("Unexpected error "+str(sys.exc_info()[0])+": "+str(e))
+        return unsat
     return ret
 
 def custom_deepcopy(input):
     output = {}
     for key in input:
         if isinstance(input[key], list):
-            output[key] = list(input[key])
+            #output[key] = list(input[key])
+            output[key] = input[key][:]
         elif isinstance(input[key], dict):
-            output[key] = custom_deepcopy(input[key])
+            #output[key] = custom_deepcopy(input[key])
+            output[key] = copy.deepcopy(input[key])
         else:
-            output[key] = input[key]
+            output[key] = copy.deepcopy(input[key])
+    return output
+
+def copy_all(*args):
+    output = []
+    for arg in args:
+        if isinstance(arg, dict):
+            output.append(custom_deepcopy(arg))
+        elif isinstance(arg, list):
+            output.append(list(arg))
+        else:
+            output.append(arg)
     return output
 
 # class Timeout():
@@ -307,3 +328,17 @@ def run_command(cmd):
     FNULL = open(os.devnull, 'w')
     solc_p = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, stderr=FNULL)
     return solc_p.communicate()[0]
+
+def remove_line_break_space(expression):
+    try:
+        return ' '.join(str(expression).replace('\n', ' ').replace('\r', '').split())
+    except:
+        return ''
+
+def remove_concat(expression):
+    expression = remove_line_break_space(expression)
+    match = re.compile('Concat\(.*?, (.+?\))\)').findall(str(expression))
+    while len(match) > 0:
+        expression = re.sub('Concat\(.*?, (.+?\))\)', match[0], str(expression), 1)
+        match = re.compile('Concat\(.*?, (.+?\))\)').findall(str(expression))
+    return expression

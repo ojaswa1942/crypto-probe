@@ -73,8 +73,8 @@ def check_reentrancy_bug(path_conditions_and_vars, stack, global_state):
         except:
             if storage_key in global_state["Ia"]:
                 new_path_condition.append(global_state["Ia"][storage_key] != 0)
-    if global_params.DEBUG_MODE:
-        log.info("=>>>>>> New PC: " + str(new_path_condition))
+    #if global_params.DEBUG_MODE:
+    #    log.info("=>>>>>> New PC: " + str(new_path_condition))
 
     solver = Solver()
     solver.set("timeout", global_params.TIMEOUT)
@@ -85,12 +85,12 @@ def check_reentrancy_bug(path_conditions_and_vars, stack, global_state):
     solver.add(stack[0] > 2300)
     # if it is not feasible to re-execute the call, its not a bug
     ret_val = not (solver.check() == unsat)
-    if global_params.DEBUG_MODE:
-        log.info("Reentrancy_bug? " + str(ret_val))
+    #if global_params.DEBUG_MODE:
+    #    log.info("Reentrancy_bug? " + str(ret_val))
     global reported
     if not reported:
-        with open(reentrancy_report_file, 'a') as r_report:
-            r_report.write('\n'+cur_file)
+        #with open(reentrancy_report_file, 'a') as r_report:
+        #    r_report.write('\n'+cur_file)
         reported = True
     return ret_val
 
@@ -146,10 +146,13 @@ def calculate_gas(opcode, stack, mem, global_state, analysis, solver):
                     solver.pop()
                 solver.push()
                 solver.add(Not( stack[1] != 0 ))
-                if solver.check() == unsat:
+                try:
+                    if solver.check() == unsat:
+                        gas_increment += GCOST["Gsset"]
+                    else:
+                        gas_increment += GCOST["Gsreset"]
+                except:
                     gas_increment += GCOST["Gsset"]
-                else:
-                    gas_increment += GCOST["Gsreset"]
                 solver.pop()
     elif opcode == "SUICIDE" and len(stack) > 1:
         if isinstance(stack[1], (int, long)):
@@ -206,35 +209,6 @@ def update_analysis(analysis, opcode, stack, mem, global_state, path_conditions_
         if not isinstance(recipient, (int, long)):
             recipient = simplify(recipient)
         analysis["money_flow"].append(("Ia", str(recipient), "all_remaining"))
-    # this is for data flow
-    elif global_params.DATA_FLOW:
-        if opcode == "SLOAD":
-            if len(stack) > 0:
-                address = stack[0]
-                if not isinstance(address, (int, long)):
-                    address = str(address)
-                if address not in analysis["sload"]:
-                    analysis["sload"].append(address)
-            else:
-                raise ValueError('STACK underflow')
-        elif opcode == "SSTORE":
-            if len(stack) > 1:
-                stored_address = stack[0]
-                stored_value = stack[1]
-                log.debug(type(stored_address))
-                # a temporary fix, not a good one.
-                # TODO move to z3 4.4.2 in which BitVecRef is hashable
-                if not isinstance(stored_address, (int, long)):
-                    stored_address = str(stored_address)
-                log.debug("storing value " + str(stored_value) + " to address " + str(stored_address))
-                if stored_address in analysis["sstore"]:
-                    # recording the new values of the item in storage
-                    analysis["sstore"][stored_address].append(stored_value)
-                else:
-                    analysis["sstore"][stored_address] = [stored_value]
-            else:
-                raise ValueError('STACK underflow')
-
 
 # Check if it is possible to execute a path after a previous path
 # Previous path has prev_pc (previous path condition) and set global state variables as in gstate (only storage values)

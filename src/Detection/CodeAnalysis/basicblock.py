@@ -46,8 +46,8 @@ class BasicBlock:
 
     def display(self):
         print "================"
-        print "start address: %d" % self.start
-        print "end address: %d" % self.end
+        print "start address: %x" % self.start
+        print "end address: %x" % self.end
         print "end statement type: " + self.type
         for instr in self.instructions:
             print instr

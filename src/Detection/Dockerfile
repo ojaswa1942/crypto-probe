@@ -1,10 +1,11 @@
 ARG ETHEREUM_VERSION=alltools-v1.8.16
 ARG SOLC_VERSION=0.4.25
-ARG NODEREPO=node_12.x
 
 FROM ethereum/client-go:${ETHEREUM_VERSION} as geth
 FROM ethereum/solc:${SOLC_VERSION} as solc
 FROM ubuntu:bionic
+
+ARG NODEREPO=node_12.x
 
 LABEL maintainer "Ojaswa Sharma <https://github.com/ojaswa1942>"
 

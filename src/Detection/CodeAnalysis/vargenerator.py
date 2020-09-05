@@ -20,11 +20,15 @@ class Generator:
         return "Id_size"
 
     def gen_mem_var(self, address):
-        return "mem_" + str(address)
+        return "mem_[" + str(address) + "]"
 
     def gen_arbitrary_var(self):
         self.count += 1
         return "some_var_" + str(self.count)
+
+    def gen_conditional_var(self):
+        self.count += 1
+        return "some_condition_" + str(self.count)
 
     def gen_arbitrary_address_var(self):
         self.count += 1
@@ -38,7 +42,7 @@ class Generator:
         return "gas_" + str(self.count)
 
     def gen_gas_price_var(self):
-        return "Ip"
+        return "tx.gasprice"
 
     def gen_address_var(self):
         return "Ia"
@@ -47,11 +51,10 @@ class Generator:
         return "Is"
 
     def gen_origin_var(self):
-        return "Io"
+        return "tx.origin"
 
-    def gen_balance_var(self):
-        self.count += 1
-        return "balance_" + str(self.count)
+    def gen_balance_var(self, address):
+        return "balance_" + str(address)
 
     def gen_code_var(self, address, position, bytecount):
         return "code_" + str(address) + "_" + str(position) + "_" + str(bytecount)

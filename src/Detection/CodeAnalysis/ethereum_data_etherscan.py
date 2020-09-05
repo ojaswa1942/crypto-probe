@@ -8,7 +8,7 @@ import requests
 class EthereumData:
 	def __init__(self):
 		self.apiDomain = "https://api.etherscan.io/api"
-		self.apikey = "VT4IW6VK7VES1Q9NYFI74YKH8U7QW9XRHN"
+		self.apikey = "RENKCIFS82ID37VJ4CTS98KTMUQGF6IRSX"
 
 	def getBalance(self, address):
 		apiEndPoint = self.apiDomain + "?module=account&action=balance&address=" + address + "&tag=latest&apikey=" + self.apikey

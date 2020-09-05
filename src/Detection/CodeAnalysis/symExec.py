@@ -1,34 +1,45 @@
 import tokenize
-import zlib, base64
+import sha3
 from tokenize import NUMBER, NAME, NEWLINE
 import re
 import math
 import sys
-import atexit
 import pickle
 import json
 import traceback
 import signal
 import time
 import logging
-from collections import namedtuple
-from z3 import *
+import os.path
+import z3
+import binascii
+import global_params
 
+from collections import namedtuple
 from vargenerator import *
-from ethereum_data import *
+from ethereum_data_etherscan import *
 from basicblock import BasicBlock
 from analysis import *
-from test_evm.global_test_params import (TIME_OUT, UNKOWN_INSTRUCTION,
-                                         EXCEPTION, PICKLE_PATH)
-from validator import Validator
-import global_params
 
 log = logging.getLogger(__name__)
 
 UNSIGNED_BOUND_NUMBER = 2**256 - 1
 CONSTANT_ONES_159 = BitVecVal((1 << 160) - 1, 256)
 
-Assertion = namedtuple('Assertion', ['pc', 'model'])
+def enum(**named_values):
+    return type('Enum', (), named_values)
+
+HeuristicTypes = enum(
+    MONEY_FLOW="Money flow",
+    BALANCE_DISORDER="Balance disorder",
+    HIDDEN_TRANSFER="Hidden transfer",
+    INHERITANCE_DISORDER="Inheritance disorder",
+    UNINITIALISED_STRUCT="Uninitialised struct",
+    TYPE_DEDUCTION_OVERFLOW="Type deduction overflow",
+    SKIP_EMPTY_STRING_LITERAL="Skip empty string literal",
+    HIDDEN_STATE_UPDATE="Hidden state update",
+    STRAW_MAN_CONTRACT="Straw man contract"
+)
 
 class Parameter:
     def __init__(self, **kwargs):
@@ -43,10 +54,12 @@ class Parameter:
             "memory": [],
             "models": [],
             "visited": [],
+            "visited_edges": {},
             "mem": {},
             "analysis": {},
             "sha3_list": {},
             "global_state": {},
+            "is_feasible": True,
             "path_conditions_and_vars": {}
         }
         for (attr, default) in attr_defaults.iteritems():
@@ -62,17 +75,77 @@ def initGlobalVars():
     solver = Solver()
     solver.set("timeout", global_params.TIMEOUT)
 
-    global any_bug
-    any_bug = False
-
     global visited_pcs
     visited_pcs = set()
 
     global results
     results = {
-        "evm_code_coverage": "", "callstack": False, "money_concurrency": False,
-        "time_dependency": False, "reentrancy": False, "assertion_failure": False
+        "evm_code_coverage": "", "execution_time": "", "dead_code": [],
+        "execution_paths": "", "timeout": False, "money_flow": False,
+        "balance_disorder": False, "hidden_transfer": False,
+        "inheritance_disorder": False, "uninitialised_struct": False,
+        "type_deduction_overflow": False, "skip_empty_string_literal": False,
+        "hidden_state_update": False, "straw_man_contract": False,
+        "attack_methods": [], "cashout_methods": []
     }
+
+    global g_timeout
+    g_timeout = False
+
+    global feasible_blocks
+    feasible_blocks = []
+
+    global infeasible_blocks
+    infeasible_blocks = []
+
+    global execution_paths
+    execution_paths = {}
+
+    global list_of_comparisons
+    list_of_comparisons = {}
+
+    global list_of_functions
+    list_of_functions = {}
+
+    global list_of_structs
+    list_of_structs = []
+
+    global list_of_sstores
+    list_of_sstores = []
+
+    global list_of_calls
+    list_of_calls = {}
+
+    global list_of_suicides
+    list_of_suicides = []
+
+    global list_of_vars
+    list_of_vars = {}
+
+    global list_of_multiplications
+    list_of_multiplications = {}
+
+    global list_of_additions
+    list_of_additions = {}
+
+    global terminals
+    terminals = []
+
+    global message_value
+    message_value = None
+
+    global account_balance
+    account_balance = None
+
+    global suicidal
+    suicidal = False
+
+    global heuristics
+    heuristics = []
+
+
+
+
 
     # capturing the last statement of each basic block
     global end_ins_dict
@@ -92,24 +165,9 @@ def initGlobalVars():
     global edges
     edges = {}
 
-    global visited_edges
-    visited_edges = {}
-
-    global money_flow_all_paths
-    money_flow_all_paths = []
-
-    global reentrancy_all_paths
-    reentrancy_all_paths = []
-
-    global data_flow_all_paths
-    data_flow_all_paths = [[], []] # store all storage addresses
-
     # store the path condition corresponding to each path in money_flow_all_paths
     global path_conditions
     path_conditions = []
-
-    global global_problematic_pcs
-    global_problematic_pcs = {"money_concurrency_bug": [], "reentrancy_bug": [], "time_dependency_bug": [], "assertion_failure": []}
 
     # store global variables, e.g. storage, balance of all paths
     global all_gs
@@ -131,42 +189,6 @@ def initGlobalVars():
 
     global log_file
     log_file = open(c_name + '.log', "w")
-
-    global rfile
-    if global_params.REPORT_MODE:
-        rfile = open(c_name + '.report', 'w')
-
-def check_unit_test_file():
-    if global_params.UNIT_TEST == 1:
-        try:
-            open('unit_test.json', 'r')
-        except:
-            log.critical("Could not open result file for unit test")
-            exit()
-
-def isTesting():
-    return global_params.UNIT_TEST != 0
-
-# A simple function to compare the end stack with the expected stack
-# configurations specified in a test file
-def compare_stack_unit_test(stack):
-    try:
-        size = int(result_file.readline())
-        content = result_file.readline().strip('\n')
-        if size == len(stack) and str(stack) == content:
-            log.debug("PASSED UNIT-TEST")
-        else:
-            log.warning("FAILED UNIT-TEST")
-            log.warning("Expected size %d, Resulted size %d", size, len(stack))
-            log.warning("Expected content %s \nResulted content %s", content, str(stack))
-    except Exception as e:
-        log.warning("FAILED UNIT-TEST")
-        log.warning(e.message)
-
-def compare_storage_and_gas_unit_test(global_state, analysis):
-    unit_test = pickle.load(open(PICKLE_PATH, 'rb'))
-    test_status = unit_test.compare_with_symExec_result(global_state, analysis)
-    exit(test_status)
 
 def change_format():
     with open(c_name) as disasm_file:
@@ -212,13 +234,51 @@ def build_cfg_and_analyze():
         construct_bb()
         construct_static_edges()
         full_sym_exec()  # jump targets are constructed on the fly
-
+        if global_params.CFG:
+            print_cfg()
 
 def print_cfg():
+    f = open(c_name.replace('.disasm', '').replace(':', '-')+'.dot', 'w')
+    f.write('digraph honeybadger_cfg {\n')
+    f.write('rankdir = TB;\n')
+    f.write('size = "240"\n')
+    f.write('graph[fontname = Courier, fontsize = 14.0, labeljust = l, nojustify = true];node[shape = record];\n')
+    address_width = 10
+    if len(hex(instructions.keys()[-1])) > address_width:
+        address_width = len(hex(instructions.keys()[-1]))
     for block in vertices.values():
-        block.display()
+        #block.display()
+        address = block.get_start_address()
+        label = '"'+hex(block.get_start_address())+'"[label="'
+        for instruction in block.get_instructions():
+            label += "{0:#0{1}x}".format(address, address_width)+" "+instruction+"\l"
+            address += 1 + (len(instruction.split(' ')[1].replace("0x", "")) / 2)
+        if block.get_start_address() in infeasible_blocks:
+            f.write(label+'",style=filled,color=gray];\n')
+        else:
+            f.write(label+'"];\n')
+        if block.get_block_type() == "conditional":
+            if len(edges[block.get_start_address()]) > 1:
+                true_branch = block.get_branch_expression()
+                if is_expr(true_branch):
+                    true_branch = simplify(true_branch)
+                f.write('"'+hex(block.get_start_address())+'" -> "'+hex(edges[block.get_start_address()][1])+'" [color="green" label=" '+str(true_branch)+'"];\n')
+                false_branch = Not(block.get_branch_expression())
+                if is_expr(false_branch):
+                    false_branch = simplify(false_branch)
+                f.write('"'+hex(block.get_start_address())+'" -> "'+hex(edges[block.get_start_address()][0])+'" [color="red" label=" '+str(false_branch)+'"];\n')
+            else:
+                f.write('"'+hex(block.get_start_address())+'" -> "UNKNOWN_TARGET" [color="black" label=" UNKNOWN_BRANCH_EXPR"];\n')
+                f.write('"'+hex(block.get_start_address())+'" -> "'+hex(edges[block.get_start_address()][0])+'" [color="black"];\n')
+        elif block.get_block_type() == "unconditional" or block.get_block_type() == "falls_to":
+            if len(edges[block.get_start_address()]) > 0:
+                for i in range(len(edges[block.get_start_address()])):
+                    f.write('"'+hex(block.get_start_address())+'" -> "'+hex(edges[block.get_start_address()][i])+'" [color="black"];\n')
+            else:
+                f.write('"'+hex(block.get_start_address())+'" -> "UNKNOWN_TARGET" [color="black"];\n')
+    f.write('}\n')
+    f.close()
     log.debug(str(edges))
-
 
 def mapping_push_instruction(current_line_content, current_ins_address, idx, positions, length):
     global source_map
@@ -306,7 +366,6 @@ def collect_vertices(tokens):
                     push_val += ptok_string
                 except ValueError:
                     pass
-
             continue
         elif is_new_line is True and tok_type == NUMBER:  # looking for a line number
             last_ins_address = current_ins_address
@@ -386,7 +445,6 @@ def construct_bb():
 def construct_static_edges():
     add_falls_to()  # these edges are static
 
-
 def add_falls_to():
     global vertices
     global edges
@@ -398,8 +456,9 @@ def add_falls_to():
             edges[key].append(target)
             vertices[key].set_falls_to(target)
 
-
 def get_init_global_state(path_conditions_and_vars):
+    global message_value
+
     global_state = {"balance" : {}, "pc": 0}
     init_is = init_ia = deposited_value = sender_address = receiver_address = gas_price = origin = currentCoinbase = currentNumber = currentDifficulty = currentGasLimit = callData = None
 
@@ -429,7 +488,7 @@ def get_init_global_state(path_conditions_and_vars):
             if state["env"]["currentGasLimit"]:
                 currentGasLimit = int(state["env"]["currentGasLimit"], 16)
 
-    # for some weird reason these 3 vars are stored in path_conditions insteaad of global_state
+    # for some weird reason these 3 vars are stored in path_conditions instead of global_state
     else:
         sender_address = BitVec("Is", 256)
         receiver_address = BitVec("Ia", 256)
@@ -440,6 +499,8 @@ def get_init_global_state(path_conditions_and_vars):
     path_conditions_and_vars["Is"] = sender_address
     path_conditions_and_vars["Ia"] = receiver_address
     path_conditions_and_vars["Iv"] = deposited_value
+
+    message_value = deposited_value
 
     constraint = (deposited_value >= BitVecVal(0, 256))
     path_conditions_and_vars["path_condition"].append(constraint)
@@ -511,24 +572,25 @@ def full_sym_exec():
     global_state = get_init_global_state(path_conditions_and_vars)
     analysis = init_analysis()
     params = Parameter(path_conditions_and_vars=path_conditions_and_vars, global_state=global_state, analysis=analysis)
+    execution_paths[total_no_of_paths] = []
     return sym_exec_block(params)
 
 
 # Symbolically executing a block from the start address
 def sym_exec_block(params):
     global solver
-    global visited_edges
-    global money_flow_all_paths
-    global data_flow_all_paths
+    #global visited_edges
     global path_conditions
-    global global_problematic_pcs
     global all_gs
     global results
     global source_map
+    global terminals
+    global loop_limits
 
     block = params.block
     pre_block = params.pre_block
     visited = params.visited
+    visited_edges = params.visited_edges
     depth = params.depth
     stack = params.stack
     mem = params.mem
@@ -546,8 +608,9 @@ def sym_exec_block(params):
         log.debug("UNKNOWN JUMP ADDRESS. TERMINATING THIS PATH")
         return ["ERROR"]
 
-    log.debug("Reach block address %d \n", block)
-    log.debug("STACK: " + str(stack))
+    if global_params.DEBUG_MODE:
+        print("Reach block address " + hex(block))
+        #print("STACK: " + str(stack))
 
     current_edge = Edge(pre_block, block)
     if visited_edges.has_key(current_edge):
@@ -557,69 +620,93 @@ def sym_exec_block(params):
         visited_edges.update({current_edge: 1})
 
     if visited_edges[current_edge] > global_params.LOOP_LIMIT:
-        log.debug("Overcome a number of loop limit. Terminating this path ...")
-        return stack
+        if jump_type[pre_block] == "conditional" and vertices[pre_block].get_falls_to() == block:
+            if global_params.DEBUG_MODE:
+                print("!!! Overcome a number of loop limit. Terminating this path ... !!!")
+            return stack
 
     current_gas_used = analysis["gas"]
     if current_gas_used > global_params.GAS_LIMIT:
-        log.debug("Run out of gas. Terminating this path ... ")
+        if global_params.DEBUG_MODE:
+            print("!!! Run out of gas. Terminating this path ... !!!")
         return stack
 
     # Execute every instruction, one at a time
     try:
         block_ins = vertices[block].get_instructions()
     except KeyError:
-        log.debug("This path results in an exception, possibly an invalid jump address")
+        if global_params.DEBUG_MODE:
+            print("This path results in an exception, possibly an invalid jump address")
         return ["ERROR"]
 
     for instr in block_ins:
+        if global_params.DEBUG_MODE:
+            print(hex(global_state["pc"])+" \t "+str(instr))
         params.instr = instr
         sym_exec_ins(params)
+    if global_params.DEBUG_MODE:
+        print("")
+
+    try:
+        # Search for structs inside basic block
+        sequence_of_instructions = ""
+        for index in instructions:
+            if index >= vertices[block].get_start_address() and index <= vertices[block].get_end_address():
+                sequence_of_instructions += str(index)+" "+instructions[index]
+        matches = re.compile("[0-9]+ DUP2 [0-9]+ PUSH1 0x([0-9]+) [0-9]+ ADD .+? [0-9]+ SWAP1 ([0-9]+) SSTORE").findall(sequence_of_instructions)
+        if matches:
+            # Check that that struct has more than one element and that the first element is stored to address 0
+            if len(matches) > 1 and int(matches[0][0]) == 0:
+                for match in matches:
+                    struct = {}
+                    struct["path_condition"]     = path_conditions_and_vars["path_condition"]
+                    struct["function_signature"] = get_function_signature_from_path_condition(struct["path_condition"])
+                    struct["address"]            = int(match[0])
+                    struct["block"]              = params.block
+                    struct["pc"]                 = int(match[1])
+                    if not struct in list_of_structs:
+                        list_of_structs.append(struct)
+        else:
+            matches = re.compile("[0-9]+ DUP2 ([0-9]+) SSTORE .+? [0-9]+ PUSH1 0x[0-9]+ [0-9]+ DUP[0-9] [0-9]+ ADD [0-9]+ SSTORE").findall(sequence_of_instructions)
+            if matches:
+                for sstore in list_of_sstores:
+                    if sstore["pc"] == int(matches[0]) and sstore["address"] == 0:
+                        struct = {}
+                        struct["path_condition"]     = path_conditions_and_vars["path_condition"]
+                        struct["function_signature"] = sstore["function_signature"]
+                        struct["address"]            = sstore["address"]
+                        struct["block"]              = params.block
+                        struct["pc"]                 = sstore["pc"]
+                        if not struct in list_of_structs:
+                            list_of_structs.append(struct)
+    except:
+        pass
 
     # Mark that this basic block in the visited blocks
     visited.append(block)
     depth += 1
 
-    reentrancy_all_paths.append(analysis["reentrancy_bug"])
-    if analysis["money_flow"] not in money_flow_all_paths:
-        global_problematic_pcs["money_concurrency_bug"].append(analysis["money_concurrency_bug"])
-        money_flow_all_paths.append(analysis["money_flow"])
-        path_conditions.append(path_conditions_and_vars["path_condition"])
-        global_problematic_pcs["time_dependency_bug"].append(analysis["time_dependency_bug"])
-        all_gs.append(copy_global_values(global_state))
-    if global_params.DATA_FLOW:
-        if analysis["sload"] not in data_flow_all_paths[0]:
-            data_flow_all_paths[0].append(analysis["sload"])
-        if analysis["sstore"] not in data_flow_all_paths[1]:
-            data_flow_all_paths[1].append(analysis["sstore"])
-
     # Go to next Basic Block(s)
     if jump_type[block] == "terminal" or depth > global_params.DEPTH_LIMIT:
         global total_no_of_paths
-        global no_of_test_cases
 
         total_no_of_paths += 1
 
-        if global_params.GENERATE_TEST_CASES:
-            try:
-                model = solver.model()
-                no_of_test_cases += 1
-                filename = "test%s.otest" % no_of_test_cases
-                with open(filename, 'w') as f:
-                    for variable in model.decls():
-                        f.write(str(variable) + " = " + str(model[variable]) + "\n")
-                if os.stat(filename).st_size == 0:
-                    os.remove(filename)
-                    no_of_test_cases -= 1
-            except Exception as e:
-                pass
+        terminal = {}
+        terminal["opcode"] = block_ins = vertices[block].get_instructions()[-1].replace(" ", "")
+        terminal["path_condition"] = path_conditions_and_vars["path_condition"]
+        terminals.append(terminal)
 
-        log.debug("TERMINATING A PATH ...")
+        if global_params.DEBUG_MODE:
+            if depth > global_params.DEPTH_LIMIT:
+                print "!!! DEPTH LIMIT EXCEEDED !!!"
+
+        if global_params.DEBUG_MODE:
+            print "Termintating path: "+str(total_no_of_paths)
+            print "Depth: "+str(depth)
+            print ""
+
         display_analysis(analysis)
-        if global_params.UNIT_TEST == 1:
-            compare_stack_unit_test(stack)
-        if global_params.UNIT_TEST == 2 or global_params.UNIT_TEST == 3:
-            compare_storage_and_gas_unit_test(global_state, analysis)
 
     elif jump_type[block] == "unconditional":  # executing "JUMP"
         successor = vertices[block].get_jump_target()
@@ -627,6 +714,7 @@ def sym_exec_block(params):
         new_params.depth = depth
         new_params.block = successor
         new_params.pre_block = block
+        new_params.visited_edges = visited_edges
         new_params.global_state["pc"] = successor
         if source_map:
             source_code = source_map.find_source_code(global_state["pc"])
@@ -639,90 +727,121 @@ def sym_exec_block(params):
         new_params.depth = depth
         new_params.block = successor
         new_params.pre_block = block
+        new_params.visited_edges = visited_edges
         new_params.global_state["pc"] = successor
         sym_exec_block(new_params)
     elif jump_type[block] == "conditional":  # executing "JUMPI"
-
         # A choice point, we proceed with depth first search
 
-        branch_expression = vertices[block].get_branch_expression()
-
-        log.debug("Branch expression: " + str(branch_expression))
-
-        solver.push()  # SET A BOUNDARY FOR SOLVER
-        solver.add(branch_expression)
-
-        try:
-            if solver.check() == unsat:
-                log.debug("INFEASIBLE PATH DETECTED")
-            else:
-                left_branch = vertices[block].get_jump_target()
-                new_params = params.copy()
-                new_params.depth = depth
-                new_params.block = left_branch
-                new_params.pre_block = block
-                new_params.global_state["pc"] = left_branch
-                new_params.path_conditions_and_vars["path_condition"].append(branch_expression)
-                last_idx = len(new_params.path_conditions_and_vars["path_condition"]) - 1
-                new_params.analysis["time_dependency_bug"][last_idx] = global_state["pc"]
-                try:
-                    model = [solver.model()]
-                    new_params.models += model
-                except:
-                    pass
-                sym_exec_block(new_params)
-        except Exception as e:
-            log_file.write(str(e))
-            if global_params.DEBUG_MODE:
-                traceback.print_exc()
-            if not global_params.IGNORE_EXCEPTIONS:
-                if str(e) == "timeout":
-                    raise e
-
-        solver.pop()  # POP SOLVER CONTEXT
-
-        solver.push()  # SET A BOUNDARY FOR SOLVER
-        negated_branch_expression = Not(branch_expression)
-        solver.add(negated_branch_expression)
-
-        log.debug("Negated branch expression: " + str(negated_branch_expression))
-
-        try:
-            if solver.check() == unsat:
-                # Note that this check can be optimized. I.e. if the previous check succeeds,
-                # no need to check for the negated condition, but we can immediately go into
-                # the else branch
-                log.debug("INFEASIBLE PATH DETECTED")
-            else:
-                right_branch = vertices[block].get_falls_to()
-                new_params = params.copy()
-                new_params.depth = depth
-                new_params.block = right_branch
-                new_params.pre_block = block
-                new_params.global_state["pc"] = right_branch
-                new_params.path_conditions_and_vars["path_condition"].append(negated_branch_expression)
-                last_idx = len(new_params.path_conditions_and_vars["path_condition"]) - 1
-                new_params.analysis["time_dependency_bug"][last_idx] = global_state["pc"]
-                try:
-                    new_params.models.append(solver.model())
-                except:
-                    pass
-                sym_exec_block(new_params)
-        except Exception as e:
-            log_file.write(str(e))
-            if global_params.DEBUG_MODE:
-                traceback.print_exc()
-            if not global_params.IGNORE_EXCEPTIONS:
-                if str(e) == "timeout":
-                    raise e
-        solver.pop()  # POP SOLVER CONTEXT
         updated_count_number = visited_edges[current_edge] - 1
         visited_edges.update({current_edge: updated_count_number})
+
+        current_execution_path = copy.deepcopy(execution_paths[total_no_of_paths])
+
+        branch_expression = vertices[block].get_branch_expression()
+        negated_branch_expression = Not(branch_expression)
+
+        solver.reset()
+        solver.add(path_conditions_and_vars["path_condition"])
+
+        if global_params.DEBUG_MODE:
+            print("Negated branch expression: " + remove_line_break_space(negated_branch_expression))
+
+        if not negated_branch_expression in list_of_comparisons:
+            list_of_comparisons[negated_branch_expression] = get_function_signature_from_path_condition(path_conditions_and_vars["path_condition"])
+
+        solver.add(negated_branch_expression)
+
+        isRightBranchFeasible = True
+
+        try:
+            try:
+                if solver.check() == unsat and not (negated_branch_expression == True or negated_branch_expression == False or negated_branch_expression == Not(True) or negated_branch_expression == Not(False)):
+                    isRightBranchFeasible = False
+            except:
+                isRightBranchFeasible = False
+            if not isRightBranchFeasible:
+                if not vertices[block].get_falls_to() in feasible_blocks:
+                    infeasible_blocks.append(vertices[block].get_falls_to())
+                if global_params.DEBUG_MODE:
+                    print("RIGHT BRANCH IS INFEASIBLE ("+str(solver.check())+")")
+            else:
+                if vertices[block].get_falls_to() in infeasible_blocks:
+                    infeasible_blocks.remove(vertices[block].get_falls_to())
+                    for heuristic in heuristics:
+                        if heuristic["block"] == vertices[block].get_falls_to():
+                            heuristics.remove(heuristic)
+                feasible_blocks.append(vertices[block].get_falls_to())
+            right_branch = vertices[block].get_falls_to()
+            new_params = params.copy()
+            new_params.depth = depth
+            new_params.block = right_branch
+            new_params.pre_block = block
+            new_params.visited_edges = visited_edges
+            new_params.global_state["pc"] = right_branch
+            new_params.is_feasible = isRightBranchFeasible
+            new_params.path_conditions_and_vars["path_condition"].append(negated_branch_expression)
+            sym_exec_block(new_params)
+        except Exception as e:
+            log_file.write(str(e))
+            if global_params.DEBUG_MODE:
+                traceback.print_exc()
+            if str(e) == "timeout":
+                raise e
+
+        execution_paths[total_no_of_paths] = current_execution_path
+
+        solver.reset()
+        solver.add(path_conditions_and_vars["path_condition"])
+
+        if global_params.DEBUG_MODE:
+            print("Branch expression: " + remove_line_break_space(branch_expression))
+
+        if not branch_expression in list_of_comparisons:
+            list_of_comparisons[branch_expression] = get_function_signature_from_path_condition(path_conditions_and_vars["path_condition"])
+
+        solver.add(branch_expression)
+
+        isLeftBranchFeasible = True
+
+        try:
+            try:
+                if solver.check() == unsat and not (branch_expression == True or branch_expression == False or branch_expression == Not(True) or branch_expression == Not(False)):
+                    isLeftBranchFeasible = False
+            except:
+                isLeftBranchFeasible = False
+            if not isLeftBranchFeasible:
+                if not vertices[block].get_jump_target() in feasible_blocks:
+                    infeasible_blocks.append(vertices[block].get_jump_target())
+                if global_params.DEBUG_MODE:
+                    print("LEFT BRANCH IS INFEASIBLE ("+str(solver.check())+")")
+            else:
+                if vertices[block].get_jump_target() in infeasible_blocks:
+                    infeasible_blocks.remove(vertices[block].get_jump_target())
+                    for heuristic in heuristics:
+                        if heuristic["block"] == vertices[block].get_jump_target():
+                            heuristics.remove(heuristic)
+                feasible_blocks.append(vertices[block].get_jump_target())
+            left_branch = vertices[block].get_jump_target()
+            new_params = params.copy()
+            new_params.depth = depth
+            new_params.block = left_branch
+            new_params.pre_block = block
+            new_params.visited_edges = visited_edges
+            new_params.global_state["pc"] = left_branch
+            new_params.is_feasible = isLeftBranchFeasible
+            new_params.path_conditions_and_vars["path_condition"].append(branch_expression)
+            sym_exec_block(new_params)
+        except Exception as e:
+            log_file.write(str(e))
+            if global_params.DEBUG_MODE:
+                traceback.print_exc()
+            if str(e) == "timeout":
+                raise e
     else:
         updated_count_number = visited_edges[current_edge] - 1
         visited_edges.update({current_edge: updated_count_number})
         raise Exception('Unknown Jump-Type')
-
 
 # Symbolically executing an instruction
 def sym_exec_ins(params):
@@ -731,7 +850,12 @@ def sym_exec_ins(params):
     global vertices
     global edges
     global source_map
-    global validator
+    global g_timeout
+    global execution_paths
+    global account_balance
+
+    if g_timeout:
+        raise Exception("timeout")
 
     start = params.block
     instr = params.instr
@@ -750,25 +874,12 @@ def sym_exec_ins(params):
 
     instr_parts = str.split(instr, ' ')
 
-    if instr_parts[0] == "INVALID":
-        return
-    elif instr_parts[0] == "ASSERTFAIL":
-        if source_map:
-            source_code = source_map.find_source_code(global_state["pc"])
-            if "assert" in source_code:
-                global_problematic_pcs["assertion_failure"].append(Assertion(global_state["pc"], models[-1]))
-            elif func_call != -1:
-                global_problematic_pcs["assertion_failure"].append(Assertion(func_call, models[-1]))
-        else:
-            global_problematic_pcs["assertion_failure"].append(Assertion(global_state["pc"], models[-1]))
-        return
+    execution_paths[total_no_of_paths].append(global_state["pc"])
 
     # collecting the analysis result by calling this skeletal function
     # this should be done before symbolically executing the instruction,
     # since SE will modify the stack and mem
     update_analysis(analysis, instr_parts[0], stack, mem, global_state, path_conditions_and_vars, solver)
-    if instr_parts[0] == "CALL" and analysis["reentrancy_bug"] and analysis["reentrancy_bug"][-1]:
-        global_problematic_pcs["reentrancy_bug"].append(global_state["pc"])
 
     log.debug("==============================")
     log.debug("EXECUTING: " + instr)
@@ -778,10 +889,9 @@ def sym_exec_ins(params):
     #
     if instr_parts[0] == "STOP":
         global_state["pc"] = global_state["pc"] + 1
-        return
+        #return
     elif instr_parts[0] == "ADD":
         if len(stack) > 1:
-            global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             second = stack.pop(0)
             # Type conversion is needed when they are mismatched
@@ -796,12 +906,17 @@ def sym_exec_ins(params):
                 # if both are symbolic z3 takes care of modulus automatically
                 computed = (first + second) % (2 ** 256)
             computed = simplify(computed) if is_expr(computed) else computed
+            if isReal(computed):
+                if not global_state["pc"] in list_of_additions:
+                    list_of_additions[global_state["pc"]] = []
+                if not computed in list_of_additions[global_state["pc"]]:
+                    list_of_additions[global_state["pc"]].append(computed)
             stack.insert(0, computed)
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "MUL":
         if len(stack) > 1:
-            global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             second = stack.pop(0)
             if isReal(first) and isSymbolic(second):
@@ -810,7 +925,13 @@ def sym_exec_ins(params):
                 second = BitVecVal(second, 256)
             computed = first * second & UNSIGNED_BOUND_NUMBER
             computed = simplify(computed) if is_expr(computed) else computed
+            if isReal(computed):
+                if not global_state["pc"] in list_of_multiplications:
+                    list_of_multiplications[global_state["pc"]] = []
+                if not computed in list_of_multiplications[global_state["pc"]]:
+                    list_of_multiplications[global_state["pc"]].append(computed)
             stack.insert(0, computed)
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "SUB":
@@ -846,7 +967,7 @@ def sym_exec_ins(params):
                 first = to_symbolic(first)
                 second = to_symbolic(second)
                 solver.push()
-                solver.add( Not (second == 0) )
+                solver.add(Not(second == 0))
                 if check_solver(solver) == unsat:
                     computed = 0
                 else:
@@ -884,14 +1005,14 @@ def sym_exec_ins(params):
                     if check_solver(solver) == unsat:
                         computed = -2**255
                     else:
-                        solver.push()
-                        solver.add(first / second < 0)
-                        sign = -1 if check_solver(solver) == sat else 1
+                        s = Solver()
+                        s.set("timeout", global_params.TIMEOUT)
+                        s.add(first / second < 0)
+                        sign = -1 if check_solver(s) == sat else 1
                         z3_abs = lambda x: If(x >= 0, x, -x)
                         first = z3_abs(first)
                         second = z3_abs(second)
                         computed = sign * (first / second)
-                        solver.pop()
                     solver.pop()
                 solver.pop()
             computed = simplify(computed) if is_expr(computed) else computed
@@ -910,11 +1031,9 @@ def sym_exec_ins(params):
                     first = to_unsigned(first)
                     second = to_unsigned(second)
                     computed = first % second & UNSIGNED_BOUND_NUMBER
-
             else:
                 first = to_symbolic(first)
                 second = to_symbolic(second)
-
                 solver.push()
                 solver.add(Not(second == 0))
                 if check_solver(solver) == unsat:
@@ -923,7 +1042,6 @@ def sym_exec_ins(params):
                 else:
                     computed = URem(first, second)
                 solver.pop()
-
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
@@ -944,27 +1062,22 @@ def sym_exec_ins(params):
             else:
                 first = to_symbolic(first)
                 second = to_symbolic(second)
-
                 solver.push()
                 solver.add(Not(second == 0))
                 if check_solver(solver) == unsat:
                     # it is provable that second is indeed equal to zero
                     computed = 0
                 else:
-
                     solver.push()
                     solver.add(first < 0) # check sign of first element
                     sign = BitVecVal(-1, 256) if check_solver(solver) == sat \
                         else BitVecVal(1, 256)
                     solver.pop()
-
                     z3_abs = lambda x: If(x >= 0, x, -x)
                     first = z3_abs(first)
                     second = z3_abs(second)
-
                     computed = sign * (first % second)
                 solver.pop()
-
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
@@ -975,7 +1088,6 @@ def sym_exec_ins(params):
             first = stack.pop(0)
             second = stack.pop(0)
             third = stack.pop(0)
-
             if isAllReal(first, second, third):
                 if third == 0:
                     computed = 0
@@ -984,8 +1096,9 @@ def sym_exec_ins(params):
             else:
                 first = to_symbolic(first)
                 second = to_symbolic(second)
+                third = to_symbolic(third)
                 solver.push()
-                solver.add( Not(third == 0) )
+                solver.add(Not(third == 0))
                 if check_solver(solver) == unsat:
                     computed = 0
                 else:
@@ -1005,7 +1118,6 @@ def sym_exec_ins(params):
             first = stack.pop(0)
             second = stack.pop(0)
             third = stack.pop(0)
-
             if isAllReal(first, second, third):
                 if third == 0:
                     computed = 0
@@ -1014,8 +1126,9 @@ def sym_exec_ins(params):
             else:
                 first = to_symbolic(first)
                 second = to_symbolic(second)
+                third = to_symbolic(third)
                 solver.push()
-                solver.add( Not(third == 0) )
+                solver.add(Not(third == 0))
                 if check_solver(solver) == unsat:
                     computed = 0
                 else:
@@ -1026,6 +1139,7 @@ def sym_exec_ins(params):
                     computed = Extract(255, 0, computed)
                 solver.pop()
             computed = simplify(computed) if is_expr(computed) else computed
+            instruction_object.data_out = [computed]
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -1064,7 +1178,7 @@ def sym_exec_ins(params):
                 first = to_symbolic(first)
                 second = to_symbolic(second)
                 solver.push()
-                solver.add( Not( Or(first >= 32, first < 0 ) ) )
+                solver.add(Not(Or(first >= 32, first < 0)))
                 if check_solver(solver) == unsat:
                     computed = second
                 else:
@@ -1078,6 +1192,7 @@ def sym_exec_ins(params):
                     solver.pop()
                 solver.pop()
             computed = simplify(computed) if is_expr(computed) else computed
+            instruction_object.data_out = [computed]
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
@@ -1178,26 +1293,33 @@ def sym_exec_ins(params):
         # Currently handled by try and catch
         if len(stack) > 0:
             global_state["pc"] = global_state["pc"] + 1
-            first = stack.pop(0)
-            if isReal(first):
-                if first == 0:
+            flag = stack.pop(0)
+            if isReal(flag):
+                if flag == 0:
                     computed = 1
                 else:
                     computed = 0
             else:
-                computed = If(first == 0, BitVecVal(1, 256), BitVecVal(0, 256))
+                computed = If(flag == 0, BitVecVal(1, 256), BitVecVal(0, 256))
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "AND":
         if len(stack) > 1:
-            global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             second = stack.pop(0)
             computed = first & second
             computed = simplify(computed) if is_expr(computed) else computed
+            if (isReal(first) and hex(first) == "0xff") or (isReal(second) and hex(second) == "0xff"):
+                if not global_state["pc"] in list_of_vars:
+                     list_of_vars[global_state["pc"]] = []
+                if isReal(first) and hex(first) == "0xff":
+                    list_of_vars[global_state["pc"]].append(second)
+                if isReal(second) and hex(second) == "0xff":
+                    list_of_vars[global_state["pc"]].append(first)
             stack.insert(0, computed)
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "OR":
@@ -1205,11 +1327,9 @@ def sym_exec_ins(params):
             global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             second = stack.pop(0)
-
             computed = first | second
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
-
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "XOR":
@@ -1217,11 +1337,9 @@ def sym_exec_ins(params):
             global_state["pc"] = global_state["pc"] + 1
             first = stack.pop(0)
             second = stack.pop(0)
-
             computed = first ^ second
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
-
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "NOT":
@@ -1256,6 +1374,7 @@ def sym_exec_ins(params):
                 else:
                     computed = second & (255 << (8 * byte_index))
                     computed = computed >> (8 * byte_index)
+                solver.pop()
             computed = simplify(computed) if is_expr(computed) else computed
             stack.insert(0, computed)
         else:
@@ -1269,21 +1388,37 @@ def sym_exec_ins(params):
             s0 = stack.pop(0)
             s1 = stack.pop(0)
             if isAllReal(s0, s1):
-                # simulate the hashing of sha3
-                data = [str(x) for x in memory[s0: s0 + s1]]
-                position = ''.join(data)
-                position = re.sub('[\s+]', '', position)
-                position = zlib.compress(position, 9)
-                position = base64.b64encode(position)
-                if position in sha3_list:
-                    stack.insert(0, sha3_list[position])
+                data = [mem[s0+i*32] for i in range(s1/32)]
+                input = ''
+                symbolic = False
+                for value in data:
+                    if is_expr(value):
+                        input += str(value)
+                        symbolic = True
+                    else:
+                        input += binascii.unhexlify('%064x' % value)
+                if input in sha3_list:
+                    stack.insert(0, sha3_list[input])
                 else:
-                    new_var_name = gen.gen_arbitrary_var()
-                    new_var = BitVec(new_var_name, 256)
-                    sha3_list[position] = new_var
-                    stack.insert(0, new_var)
+                    if symbolic:
+                        new_var_name = ""
+                        for i in reversed(range(s1/32)):
+                            if is_expr(mem[s0+i*32]):
+                                new_var_name += str(get_vars(mem[s0+i*32])[0])
+                            else:
+                                new_var_name += str(mem[s0+i*32])
+                            if i != 0:
+                                new_var_name += "_"
+                        new_var = BitVec(new_var_name, 256)
+                        sha3_list[input] = new_var
+                        path_conditions_and_vars[new_var_name] = new_var
+                        stack.insert(0, new_var)
+                    else:
+                        hash = sha3.keccak_256(input).hexdigest()
+                        new_var = int(hash, 16)
+                        sha3_list[input] = new_var
+                        stack.insert(0, new_var)
             else:
-                # push into the execution a fresh symbolic variable
                 new_var_name = gen.gen_arbitrary_var()
                 new_var = BitVec(new_var_name, 256)
                 path_conditions_and_vars[new_var_name] = new_var
@@ -1301,20 +1436,26 @@ def sym_exec_ins(params):
             global_state["pc"] = global_state["pc"] + 1
             address = stack.pop(0)
             if isReal(address) and global_params.USE_GLOBAL_BLOCKCHAIN:
-                new_var = data_source.getBalance(address)
+                balance = data_source.getBalance(address)
             else:
-                new_var_name = gen.gen_balance_var()
+                new_var_name = gen.gen_balance_var(address)
+                if path_conditions_and_vars["Ia"] in get_vars(address):
+                    new_var_name = gen.gen_balance_var(path_conditions_and_vars["Ia"])
+                    account_balance = new_var_name
                 if new_var_name in path_conditions_and_vars:
-                    new_var = path_conditions_and_vars[new_var_name]
+                    balance = path_conditions_and_vars[new_var_name]
                 else:
-                    new_var = BitVec(new_var_name, 256)
-                    path_conditions_and_vars[new_var_name] = new_var
+                    balance = BitVec(new_var_name, 256)
+                    path_conditions_and_vars[new_var_name] = balance
+                    if path_conditions_and_vars["Ia"] in get_vars(address):
+                        path_conditions_and_vars["path_condition"].append(balance > 0)
+                        path_conditions_and_vars["path_condition"].append(balance == balance + path_conditions_and_vars["Iv"])
             if isReal(address):
                 hashed_address = "concrete_address_" + str(address)
             else:
                 hashed_address = str(address)
-            global_state["balance"][hashed_address] = new_var
-            stack.insert(0, new_var)
+            global_state["balance"][hashed_address] = balance
+            stack.insert(0, balance)
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "CALLER":  # get caller address
@@ -1329,29 +1470,43 @@ def sym_exec_ins(params):
         stack.insert(0, global_state["value"])
     elif instr_parts[0] == "CALLDATALOAD":  # from input data from environment
         if len(stack) > 0:
-            global_state["pc"] = global_state["pc"] + 1
             position = stack.pop(0)
-            if source_map:
-                source_code = source_map.find_source_code(global_state["pc"] - 1)
-                if source_code.startswith("function") and isReal(position):
-                    idx1 = source_code.index("(") + 1
-                    idx2 = source_code.index(")")
-                    params = source_code[idx1:idx2]
-                    params_list = params.split(",")
-                    params_list = [param.split(" ")[-1] for param in params_list]
-                    param_idx = (position - 4) / 32
-                    new_var_name = params_list[param_idx]
-                    source_map.var_names.append(new_var_name)
-                else:
-                    new_var_name = gen.gen_data_var(position)
-            else:
-                new_var_name = gen.gen_data_var(position)
+            if isReal(position) and position != 0:
+                function_signature = None
+                for condition in path_conditions_and_vars["path_condition"]:
+                    if is_expr(condition) and str(condition).startswith("If(Extract(255, 224, Id_1) == "):
+                        match = re.compile("Extract\(255, 224, Id_1\) == ([0-9]+)").findall(str(condition))
+                        if match:
+                            function_signature = int(match[0])
+                if not function_signature in list_of_functions:
+                    list_of_functions[function_signature] = []
+                calldataload = {}
+                calldataload["block"] = params.block
+                calldataload["pc"] = global_state["pc"]
+                calldataload["position"] = position
+                list_of_functions[function_signature].append(calldataload)
+            #if source_map:
+            #    source_code = source_map.find_source_code(global_state["pc"] - 1)
+            #    if source_code.startswith("function") and isReal(position):
+            #        idx1 = source_code.index("(") + 1
+            #        idx2 = source_code.index(")")
+            #        params_code = source_code[idx1:idx2]
+            #        params_list = params_code.split(",")
+            #        params_list = [param.split(" ")[-1] for param in params_list]
+            #        param_idx = (position - 4) / 32
+            #        new_var_name = params_list[param_idx]
+            #        source_map.var_names.append(new_var_name)
+            #    else:
+            #    new_var_name = gen.gen_data_var(position)
+            #else:
+            new_var_name = gen.gen_data_var(position)
             if new_var_name in path_conditions_and_vars:
                 new_var = path_conditions_and_vars[new_var_name]
             else:
                 new_var = BitVec(new_var_name, 256)
                 path_conditions_and_vars[new_var_name] = new_var
             stack.insert(0, new_var)
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "CALLDATASIZE":
@@ -1486,6 +1641,19 @@ def sym_exec_ins(params):
             global_state["miu_i"] = current_miu_i
         else:
             raise ValueError('STACK underflow')
+    elif instr_parts[0] == "RETURNDATACOPY":
+        if len(stack) > 2:
+            global_state["pc"] += 1
+            stack.pop(0)
+            stack.pop(0)
+            stack.pop(0)
+        else:
+            raise ValueError('STACK underflow')
+    elif instr_parts[0] == "RETURNDATASIZE":
+        global_state["pc"] += 1
+        new_var_name = gen.gen_arbitrary_var()
+        new_var = BitVec(new_var_name, 256)
+        stack.insert(0, new_var)
     #
     #  40s: Block Information
     #
@@ -1543,23 +1711,22 @@ def sym_exec_ins(params):
                 temp = ((address + 31) / 32) + 1
                 current_miu_i = to_symbolic(current_miu_i)
                 expression = current_miu_i < temp
-                solver.push()
-                solver.add(expression)
-                if check_solver(solver) != unsat:
+                #solver.push()
+                #solver.add(expression)
+                #if check_solver(solver) != unsat:
                     # this means that it is possibly that current_miu_i < temp
-                    current_miu_i = If(expression,temp,current_miu_i)
-                solver.pop()
-                new_var_name = gen.gen_mem_var(address)
-                if new_var_name in path_conditions_and_vars:
+                #    current_miu_i = If(expression,temp,current_miu_i)
+                #solver.pop()
+                if address in mem:
+                    value = mem[address]
+                    stack.insert(0, value)
+                else:
+                    new_var_name = gen.gen_mem_var(address)
+                    if not new_var_name in path_conditions_and_vars:
+                        path_conditions_and_vars[new_var_name] = BitVec(new_var_name, 256)
                     new_var = path_conditions_and_vars[new_var_name]
-                else:
-                    new_var = BitVec(new_var_name, 256)
-                    path_conditions_and_vars[new_var_name] = new_var
-                stack.insert(0, new_var)
-                if isReal(address):
+                    stack.insert(0, new_var)
                     mem[address] = new_var
-                else:
-                    mem[str(address)] = new_var
                 log.debug("temp: " + str(temp))
                 log.debug("current_miu_i: " + str(current_miu_i))
             global_state["miu_i"] = current_miu_i
@@ -1594,14 +1761,14 @@ def sym_exec_ins(params):
                 log.debug("current_miu_i: " + str(current_miu_i))
                 expression = current_miu_i < temp
                 log.debug("Expression: " + str(expression))
-                solver.push()
-                solver.add(expression)
-                if check_solver(solver) != unsat:
+                #solver.push()
+                #solver.add(expression)
+                #if check_solver(solver) != unsat:
                     # this means that it is possibly that current_miu_i < temp
-                    current_miu_i = If(expression,temp,current_miu_i)
-                solver.pop()
-                mem.clear()  # very conservative
-                mem[str(stored_address)] = stored_value
+                #    current_miu_i = If(expression,temp,current_miu_i)
+                #solver.pop()
+                #mem.clear()  # very conservative
+                mem[stored_address] = stored_value
                 log.debug("temp: " + str(temp))
                 log.debug("current_miu_i: " + str(current_miu_i))
             global_state["miu_i"] = current_miu_i
@@ -1630,62 +1797,52 @@ def sym_exec_ins(params):
                     # this means that it is possibly that current_miu_i < temp
                     current_miu_i = If(expression,temp,current_miu_i)
                 solver.pop()
-                mem.clear()  # very conservative
-                mem[str(stored_address)] = stored_value
+                mem[stored_address] = stored_value
+                #mem.clear()  # very conservative
             global_state["miu_i"] = current_miu_i
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "SLOAD":
         if len(stack) > 0:
-            global_state["pc"] = global_state["pc"] + 1
             address = stack.pop(0)
-            if isReal(address) and address in global_state["Ia"]:
+            if is_expr(address):
+                address = simplify(address)
+            if address in global_state["Ia"]:
                 value = global_state["Ia"][address]
                 stack.insert(0, value)
             else:
-                if str(address) in global_state["Ia"]:
-                    value = global_state["Ia"][str(address)]
-                    stack.insert(0, value)
-                else:
-                    if is_expr(address):
-                        address = simplify(address)
-                    if source_map:
-                        new_var_name = source_map.find_source_code(global_state["pc"] - 1)
-                        operators = '[-+*/%|&^!><=]'
-                        new_var_name = re.compile(operators).split(new_var_name)[0].strip()
-                        if source_map.is_a_parameter_or_state_variable(new_var_name):
-                            new_var_name = "Ia_store" + "-" + str(address) + "-" + new_var_name
-                        else:
-                            new_var_name = gen.gen_owner_store_var(address)
+                new_var_name = gen.gen_owner_store_var(address)
+                if not new_var_name in path_conditions_and_vars:
+                    if address.__class__.__name__ == "BitVecNumRef":
+                        address = address.as_long()
                     else:
-                        new_var_name = gen.gen_owner_store_var(address)
-
-                    if new_var_name in path_conditions_and_vars:
-                        new_var = path_conditions_and_vars[new_var_name]
-                    else:
-                        new_var = BitVec(new_var_name, 256)
-                        path_conditions_and_vars[new_var_name] = new_var
-                    stack.insert(0, new_var)
-                    if isReal(address):
-                        global_state["Ia"][address] = new_var
-                    else:
-                        global_state["Ia"][str(address)] = new_var
+                        path_conditions_and_vars[new_var_name] = BitVec(new_var_name, 256)
+                new_var = path_conditions_and_vars[new_var_name]
+                stack.insert(0, new_var)
+                global_state["Ia"][address] = new_var
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
 
     elif instr_parts[0] == "SSTORE":
         if len(stack) > 1:
-            for call_pc in calls:
-                validator.instructions_vulnerable_to_callstack[call_pc] = True
-            global_state["pc"] = global_state["pc"] + 1
             stored_address = stack.pop(0)
             stored_value = stack.pop(0)
-            if isReal(stored_address):
-                # note that the stored_value could be unknown
-                global_state["Ia"][stored_address] = stored_value
+            sstore = {}
+            sstore["block"]              = params.block
+            sstore["pc"]                 = global_state["pc"]
+            sstore["address"]            = stored_address
+            sstore["value"]              = stored_value
+            if stored_address in global_state["Ia"]:
+                sstore["variable"]       = global_state["Ia"][stored_address]
             else:
-                # note that the stored_value could be unknown
-                global_state["Ia"][str(stored_address)] = stored_value
+                sstore["variable"]       = BitVec(gen.gen_owner_store_var(stored_address), 256)
+            sstore["path_condition"]     = path_conditions_and_vars["path_condition"]
+            sstore["function_signature"] = get_function_signature_from_path_condition(sstore["path_condition"])
+            if not sstore in list_of_sstores:
+                list_of_sstores.append(sstore)
+            global_state["pc"] = global_state["pc"] + 1
+            global_state["Ia"][stored_address] = stored_value
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "JUMP":
@@ -1695,7 +1852,7 @@ def sym_exec_ins(params):
                 try:
                     target_address = int(str(simplify(target_address)))
                 except:
-                    raise TypeError("Target address must be an integer")
+                    raise TypeError("Target address must be an integer: "+str(target_address))
             vertices[start].set_jump_target(target_address)
             if target_address not in edges[start]:
                 edges[start].append(target_address)
@@ -1709,15 +1866,23 @@ def sym_exec_ins(params):
                 try:
                     target_address = int(str(simplify(target_address)))
                 except:
-                    raise TypeError("Target address must be an integer")
+                    raise TypeError("Target address must be an integer: "+str(target_address))
             vertices[start].set_jump_target(target_address)
             flag = stack.pop(0)
-            branch_expression = (BitVecVal(0, 1) == BitVecVal(1, 1))
-            if isReal(flag):
-                if flag != 0:
-                    branch_expression = True
-            else:
-                branch_expression = (flag != 0)
+
+            if flag.__class__.__name__ == "BitVecNumRef":
+                flag = flag.as_long()
+
+            branch_expression = (flag != 0)
+
+            function_signature = None
+            if is_expr(branch_expression) and str(branch_expression).startswith("If(Extract(255, 224, Id_1) == "):
+                match = re.compile("Extract\(255, 224, Id_1\) == ([0-9]+)").findall(str(branch_expression))
+                if match:
+                    function_signature = int(match[0])
+            if function_signature and not function_signature in list_of_functions:
+                list_of_functions[function_signature] = []
+
             vertices[start].set_branch_expression(branch_expression)
             if target_address not in edges[start]:
                 edges[start].append(target_address)
@@ -1733,7 +1898,7 @@ def sym_exec_ins(params):
     elif instr_parts[0] == "GAS":
         # In general, we do not have this precisely. It depends on both
         # the initial gas and the amount has been depleted
-        # we need o think about this in the future, in case precise gas
+        # we need to think about this in the future, in case precise gas
         # can be tracked
         global_state["pc"] = global_state["pc"] + 1
         new_var_name = gen.gen_gas_var()
@@ -1751,8 +1916,6 @@ def sym_exec_ins(params):
         global_state["pc"] = global_state["pc"] + 1 + position
         pushed_value = int(instr_parts[1], 16)
         stack.insert(0, pushed_value)
-        if global_params.UNIT_TEST == 3: # test evm symbolic
-            stack[0] = BitVecVal(stack[0], 256)
     #
     #  80s: Duplication Operations
     #
@@ -1806,11 +1969,6 @@ def sym_exec_ins(params):
     elif instr_parts[0] == "CALL":
         # TODO: Need to handle miu_i
         if len(stack) > 6:
-            calls.append(global_state["pc"])
-            for call_pc in calls:
-                if call_pc not in validator.instructions_vulnerable_to_callstack:
-                    validator.instructions_vulnerable_to_callstack[call_pc] = False
-            global_state["pc"] = global_state["pc"] + 1
             outgas = stack.pop(0)
             recipient = stack.pop(0)
             transfer_amount = stack.pop(0)
@@ -1818,66 +1976,76 @@ def sym_exec_ins(params):
             size_data_input = stack.pop(0)
             start_data_output = stack.pop(0)
             size_data_ouput = stack.pop(0)
+            call = {}
+            call["path_condition"]     = copy.deepcopy(path_conditions_and_vars["path_condition"])
+            call["function_signature"] = get_function_signature_from_path_condition(call["path_condition"])
+            call["recipient"]          = recipient
+            call["value"]              = transfer_amount
+            call["input_offset"]       = start_data_input
+            call["input_size"]         = size_data_input
+            call["memory"]             = mem
+            call["block"]              = params.block
+            call["type"]               = "CALL"
+            call["gas"]                = outgas
+            call["pc"]                 = global_state["pc"]
+            call["id"]                 = len(list_of_calls)
+            if not total_no_of_paths in list_of_calls:
+                list_of_calls[total_no_of_paths] = []
+            if call not in list_of_calls[total_no_of_paths]:
+                list_of_calls[total_no_of_paths].append(call)
             # in the paper, it is shaky when the size of data output is
             # min of stack[6] and the | o |
-
-            if isReal(transfer_amount):
-                if transfer_amount == 0:
-                    stack.insert(0, 1)   # x = 0
-                    return
-
-            # Let us ignore the call depth
-            balance_ia = global_state["balance"]["Ia"]
-            is_enough_fund = (transfer_amount <= balance_ia)
-            solver.push()
-            solver.add(is_enough_fund)
-
-            if check_solver(solver) == unsat:
-                # this means not enough fund, thus the execution will result in exception
-                solver.pop()
-                stack.insert(0, 0)   # x = 0
+            if isReal(transfer_amount) and transfer_amount == 0:
+                stack.insert(0, 1)   # x = 0
             else:
-                # the execution is possibly okay
-                stack.insert(0, 1)   # x = 1
-                solver.pop()
-                solver.add(is_enough_fund)
-                path_conditions_and_vars["path_condition"].append(is_enough_fund)
-                last_idx = len(path_conditions_and_vars["path_condition"]) - 1
-                analysis["time_dependency_bug"][last_idx] = global_state["pc"] - 1
-                new_balance_ia = (balance_ia - transfer_amount)
-                global_state["balance"]["Ia"] = new_balance_ia
-                address_is = path_conditions_and_vars["Is"]
-                address_is = (address_is & CONSTANT_ONES_159)
-                boolean_expression = (recipient != address_is)
+                # Let us ignore the call depth
+                balance_ia = global_state["balance"]["Ia"]
+                is_enough_fund = (transfer_amount <= balance_ia)
                 solver.push()
-                solver.add(boolean_expression)
+                solver.add(is_enough_fund)
                 if check_solver(solver) == unsat:
+                    # this means not enough fund, thus the execution will result in exception
                     solver.pop()
-                    new_balance_is = (global_state["balance"]["Is"] + transfer_amount)
-                    global_state["balance"]["Is"] = new_balance_is
+                    stack.insert(0, 0)   # x = 0
                 else:
+                    # the execution is possibly okay
+                    stack.insert(0, 1)   # x = 1
                     solver.pop()
-                    if isReal(recipient):
-                        new_address_name = "concrete_address_" + str(recipient)
+                    solver.add(is_enough_fund)
+                    path_conditions_and_vars["path_condition"].append(is_enough_fund)
+                    last_idx = len(path_conditions_and_vars["path_condition"]) - 1
+                    analysis["time_dependency_bug"][last_idx] = global_state["pc"] - 1
+                    new_balance_ia = (balance_ia - transfer_amount)
+                    global_state["balance"]["Ia"] = new_balance_ia
+                    address_is = path_conditions_and_vars["Is"]
+                    address_is = (address_is & CONSTANT_ONES_159)
+                    boolean_expression = (recipient != address_is)
+                    solver.push()
+                    solver.add(boolean_expression)
+                    if check_solver(solver) == unsat:
+                        solver.pop()
+                        new_balance_is = (global_state["balance"]["Is"] + transfer_amount)
+                        global_state["balance"]["Is"] = new_balance_is
                     else:
-                        new_address_name = gen.gen_arbitrary_address_var()
-                    old_balance_name = gen.gen_arbitrary_var()
-                    old_balance = BitVec(old_balance_name, 256)
-                    path_conditions_and_vars[old_balance_name] = old_balance
-                    constraint = (old_balance >= 0)
-                    solver.add(constraint)
-                    path_conditions_and_vars["path_condition"].append(constraint)
-                    new_balance = (old_balance + transfer_amount)
-                    global_state["balance"][new_address_name] = new_balance
+                        solver.pop()
+                        if isReal(recipient):
+                            new_address_name = "concrete_address_" + str(recipient)
+                        else:
+                            new_address_name = gen.gen_arbitrary_address_var()
+                        old_balance_name = gen.gen_arbitrary_var()
+                        old_balance = BitVec(old_balance_name, 256)
+                        path_conditions_and_vars[old_balance_name] = old_balance
+                        constraint = (old_balance >= 0)
+                        solver.add(constraint)
+                        path_conditions_and_vars["path_condition"].append(constraint)
+                        new_balance = (old_balance + transfer_amount)
+                        global_state["balance"][new_address_name] = new_balance
+            global_state["pc"] = global_state["pc"] + 1
         else:
             raise ValueError('STACK underflow')
     elif instr_parts[0] == "CALLCODE":
         # TODO: Need to handle miu_i
         if len(stack) > 6:
-            calls.append(global_state["pc"])
-            for call_pc in calls:
-                if call_pc not in validator.instructions_vulnerable_to_callstack:
-                    validator.instructions_vulnerable_to_callstack[call_pc] = False
             global_state["pc"] = global_state["pc"] + 1
             outgas = stack.pop(0)
             stack.pop(0) # this is not used as recipient
@@ -1899,7 +2067,6 @@ def sym_exec_ins(params):
             is_enough_fund = (transfer_amount <= balance_ia)
             solver.push()
             solver.add(is_enough_fund)
-
             if check_solver(solver) == unsat:
                 # this means not enough fund, thus the execution will result in exception
                 solver.pop()
@@ -1911,18 +2078,35 @@ def sym_exec_ins(params):
                 solver.add(is_enough_fund)
                 path_conditions_and_vars["path_condition"].append(is_enough_fund)
                 last_idx = len(path_conditions_and_vars["path_condition"]) - 1
-                analysis["time_dependency_bug"][last_idx] = global_state["pc"] - 1
+                analysis["time_dependency_bug"][last_idx]
         else:
             raise ValueError('STACK underflow')
-    elif instr_parts[0] == "DELEGATECALL":
+    elif instr_parts[0] == "DELEGATECALL" or instr_parts[0] == "STATICCALL":
         if len(stack) > 5:
             global_state["pc"] += 1
-            stack.pop(0)
-            stack.pop(0)
-            stack.pop(0)
-            stack.pop(0)
-            stack.pop(0)
-            stack.pop(0)
+            outgas = stack.pop(0)
+            recipient = stack.pop(0)
+            start_data_input = stack.pop(0)
+            size_data_input = stack.pop(0)
+            start_data_output = stack.pop(0)
+            size_data_ouput = stack.pop(0)
+            call = {}
+            call["path_condition"]     = path_conditions_and_vars["path_condition"]
+            call["function_signature"] = get_function_signature_from_path_condition(call["path_condition"])
+            call["recipient"]          = recipient
+            call["value"]              = None
+            call["input_offset"]       = start_data_input
+            call["input_size"]         = size_data_input
+            call["memory"]             = mem
+            call["block"]              = params.block
+            call["type"]               = instr_parts[0]
+            call["gas"]                = outgas
+            call["pc"]                 = global_state["pc"]
+            call["id"]                 = len(list_of_calls)
+            if not total_no_of_paths in list_of_calls:
+                list_of_calls[total_no_of_paths] = []
+            if not call in list_of_calls[total_no_of_paths]:
+                list_of_calls[total_no_of_paths].append(call)
             new_var_name = gen.gen_arbitrary_var()
             new_var = BitVec(new_var_name, 256)
             stack.insert(0, new_var)
@@ -1934,14 +2118,23 @@ def sym_exec_ins(params):
             global_state["pc"] = global_state["pc"] + 1
             stack.pop(0)
             stack.pop(0)
-            # TODO
             pass
         else:
             raise ValueError('STACK underflow')
-    elif instr_parts[0] == "SUICIDE":
-        global_state["pc"] = global_state["pc"] + 1
+    elif instr_parts[0] == "SUICIDE" or instr_parts[0] == "SELFDESTRUCT":
+        global suicidal
+        suicidal = True
         recipient = stack.pop(0)
         transfer_amount = global_state["balance"]["Ia"]
+        suicide = {}
+        suicide["path_condition"]     = path_conditions_and_vars["path_condition"]
+        suicide["function_signature"] = get_function_signature_from_path_condition(suicide["path_condition"])
+        suicide["recipient"]          = recipient
+        suicide["value"]              = transfer_amount
+        suicide["block"]              = params.block
+        suicide["pc"]                 = global_state["pc"]
+        if suicide not in list_of_suicides:
+            list_of_suicides.append(suicide)
         global_state["balance"]["Ia"] = 0
         if isReal(recipient):
             new_address_name = "concrete_address_" + str(recipient)
@@ -1955,14 +2148,13 @@ def sym_exec_ins(params):
         path_conditions_and_vars["path_condition"].append(constraint)
         new_balance = (old_balance + transfer_amount)
         global_state["balance"][new_address_name] = new_balance
-        # TODO
-        return
-
+        global_state["pc"] = global_state["pc"] + 1
+    elif instr_parts[0] == "INVALID":
+        pass
+    elif instr_parts[0] == "ASSERTFAIL":
+        pass
     else:
-        log.debug("UNKNOWN INSTRUCTION: " + instr_parts[0])
-        if global_params.UNIT_TEST == 2 or global_params.UNIT_TEST == 3:
-            log.critical("Unkown instruction: %s" % instr_parts[0])
-            exit(UNKOWN_INSTRUCTION)
+        print("UNKNOWN INSTRUCTION: " + instr_parts[0])
         raise Exception('UNKNOWN INSTRUCTION: ' + instr_parts[0])
 
     try:
@@ -1970,403 +2162,764 @@ def sym_exec_ins(params):
     except:
         log.debug("Error: Debugging states")
 
-# Detect if a money flow depends on the timestamp
-def detect_time_dependency():
-    global results
-    global source_map
-    global validator
-    global any_bug
+########################################################
+#                      Heuristics                      #
+########################################################
 
-    TIMESTAMP_VAR = "IH_s"
-    is_dependant = False
-    pcs = []
-    if global_params.PRINT_PATHS:
-        log.info("ALL PATH CONDITIONS")
-    for i, cond in enumerate(path_conditions):
-        if global_params.PRINT_PATHS:
-            log.info("PATH " + str(i + 1) + ": " + str(cond))
-        for j, expr in enumerate(cond):
-            if is_expr(expr):
-                if TIMESTAMP_VAR in str(expr) and j in global_problematic_pcs["time_dependency_bug"][i]:
-                    pcs.append(global_problematic_pcs["time_dependency_bug"][i][j])
-                    is_dependant = True
-                    continue
+########################################################
+#                    H0: Cash Flow                    #
+########################################################
+def detect_cash_flow():
+    # Check if money could potentially go in
+    money_flow_in = False
+    for terminal in terminals:
+        if terminal["opcode"] != "REVERT":
+            s = Solver()
+            s.set("timeout", global_params.TIMEOUT)
+            s.add(terminal["path_condition"])
+            s.add(message_value > 0)
+            if s.check() == sat:
+                money_flow_in = True
 
-    if source_map:
-        pcs = validator.remove_false_positives(pcs)
-        s = source_map.to_str(pcs, "Time dependency bug")
-        if s:
-            any_bug = True
-            results["time_dependency"] = s
-        s = "\t  Time dependency bug: \t True" + s if s else "\t  Time dependency bug: \t False"
-        log.info(s)
+    # Check if money could potentially go out
+    money_flow_out = False
+    if suicidal:
+        money_flow_out = True
     else:
-        results["time_dependency"] = bool(pcs)
-        log.info("\t  Timedependency bug: \t %s", bool(pcs))
+        for index in list_of_calls:
+            for call in list_of_calls[index]:
+                if call["type"] == "DELEGATECALL":
+                    money_flow_out = True
+                elif call["type"] == "CALL" and is_expr(call["value"]) or call["value"] > 0:
+                    money_flow_out = True
 
-    if global_params.REPORT_MODE:
-        file_name = c_name.split("/")[len(c_name.split("/"))-1].split(".")[0]
-        report_file = file_name + '.report'
-        with open(report_file, 'w') as rfile:
-            if is_dependant:
-                rfile.write("yes\n")
-            else:
-                rfile.write("no\n")
+    if money_flow_in and money_flow_out:
+        heuristic = {}
+        heuristic["function_signature"] = None
+        heuristic["block"]              = None
+        heuristic["type"]               = HeuristicTypes.MONEY_FLOW
+        heuristic["pc"]                 = None
+        if not heuristic in heuristics:
+            heuristics.append(heuristic)
+        return True
+    return False
 
+########################################################
+#                  H1: Balance Disorder                #
+########################################################
+def detect_balance_disorder():
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if call["block"] in infeasible_blocks and is_expr(call["value"]) and ("balance_Ia + Iv" == str(call["value"]) or "Iv + balance_Ia" == str(call["value"])):
+                heuristic = {}
+                heuristic["function_signature"] = call["function_signature"]
+                heuristic["block"]              = call["block"]
+                heuristic["type"]               = HeuristicTypes.BALANCE_DISORDER
+                heuristic["pc"]                 = call["pc"]
+                if not heuristic in heuristics:
+                    heuristics.append(heuristic)
 
-# detect if two paths send money to different people
-def detect_money_concurrency():
-    global results
-    global source_map
-    global validator
-    global any_bug
+########################################################
+#                  H2: Hidden Transfer                 #
+########################################################
+def detect_hidden_transfer():
+    for i in list_of_calls:
+        for call1 in list_of_calls[i]:
+            for j in list_of_calls:
+                for call2 in list_of_calls[j]:
+                    if i < j and call1["pc"] < call2["pc"] \
+                    and not call1["recipient"] == call2["recipient"] \
+                    and str(call1["value"]) == str(account_balance) \
+                    and str(call2["value"]) == str(account_balance) \
+                    and call1["pc"] in execution_paths[j] \
+                    and call2["pc"] in execution_paths[j] \
+                    and "Ia_store" in str(call1["recipient"]) \
+                    and "Is" in str(call2["recipient"]):
+                        heuristic = {}
+                        heuristic["function_signature"] = call1["function_signature"]
+                        heuristic["block"]              = call1["block"]
+                        heuristic["type"]               = HeuristicTypes.HIDDEN_TRANSFER
+                        heuristic["pc"]                 = call1["pc"]
+                        if not heuristic in heuristics:
+                            heuristics.append(heuristic)
 
-    n = len(money_flow_all_paths)
-    for i in range(n):
-        log.debug("Path " + str(i) + ": " + str(money_flow_all_paths[i]))
-        log.debug(all_gs[i])
-    i = 0
-    false_positive = []
-    concurrency_paths = []
-    flows = []
-    for flow in money_flow_all_paths:
-        i += 1
-        if len(flow) == 1:
-            continue  # pass all flows which do not do anything with money
-        for j in range(i, n):
-            jflow = money_flow_all_paths[j]
-            if len(jflow) == 1:
-                continue
-            if is_diff(flow, jflow):
-                flows.append(global_problematic_pcs["money_concurrency_bug"][i-1])
-                flows.append(global_problematic_pcs["money_concurrency_bug"][j])
-                concurrency_paths.append([i-1, j])
-                if global_params.CHECK_CONCURRENCY_FP and \
-                        is_false_positive(i-1, j, all_gs, path_conditions) and \
-                        is_false_positive(j, i-1, all_gs, path_conditions):
-                    false_positive.append([i-1, j])
-                break
-        if flows:
-            break
-
-    if source_map:
-        s = ""
-        for idx, pcs in enumerate(flows):
-            pcs = validator.remove_false_positives(pcs)
-            if global_params.WEB:
-                s += "Flow " + str(idx + 1) + ":<br />"
-            else:
-                s += "\nFlow " + str(idx + 1) + ":"
-            for pc in pcs:
-                source_code = source_map.find_source_code(pc).split("\n", 1)[0]
-                if not source_code:
-                    continue
-                location = source_map.get_location(pc)
-                if global_params.WEB:
-                    s += "%s:%s:%s:<br />" % (source_map.cname.split(":", 1)[1], location['begin']['line'] + 1, location['begin']['column'] + 1)
-                    s += "<span style='margin-left: 20px'>%s</span><br />" % source_code
-                    s += "<span style='margin-left: 20px'>^</span><br />"
-                else:
-                    s += "\n%s:%s:%s\n" % (source_map.cname, location['begin']['line'] + 1, location['begin']['column'] + 1)
-                    s += source_code + "\n"
-                    s += "^"
-        if s:
-            any_bug = True
-            if global_params.WEB:
-                s = "Money concurrency bug:<br />" + "<div style='margin-left: 20px'>" + s + "</div>"
-            results["money_concurrency"] = s
-        s = "\t  Money concurrency bug: True" + s if s else "\t  Money concurrency bug: False"
-        log.info(s)
-    else:
-        results["money_concurrency"] = bool(flows)
-        log.info("\t  Money concurrency bug: %s", bool(flows))
-
-    # if PRINT_MODE: print "All false positive cases: ", false_positive
-    log.debug("Concurrency in paths: ")
-    if global_params.REPORT_MODE:
-        rfile.write("number of path: " + str(n) + "\n")
-        # number of FP detected
-        rfile.write(str(len(false_positive)) + "\n")
-        rfile.write(str(false_positive) + "\n")
-        # number of total races
-        rfile.write(str(len(concurrency_paths)) + "\n")
-        # all the races
-        rfile.write(str(concurrency_paths) + "\n")
-
-
-# Detect if there is data concurrency in two different flows.
-# e.g. if a flow modifies a value stored in the storage address and
-# the other one reads that value in its execution
-def detect_data_concurrency():
-    sload_flows = data_flow_all_paths[0]
-    sstore_flows = data_flow_all_paths[1]
-    concurrency_addr = []
-    for sflow in sstore_flows:
-        for addr in sflow:
-            for lflow in sload_flows:
-                if addr in lflow:
-                    if not addr in concurrency_addr:
-                        concurrency_addr.append(addr)
+########################################################
+#               H3: Inheritance Disorder               #
+########################################################
+def detect_inheritance_disorder():
+    owner_storage_addresses = []
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if call["input_size"] == 0 and is_expr(call["value"]):
+                for condition in call["path_condition"]:
+                    if is_expr(condition) and "==" in str(condition):
+                        separated_condition = remove_line_break_space(simplify(condition)).split("==")
+                        if (("Ia_store" in separated_condition[0] or "0" in separated_condition[0]) and "Is" in separated_condition[1]) \
+                        or (("Ia_store" in separated_condition[1] or "0" in separated_condition[1]) and "Is" in separated_condition[0]):
+                            matches = re.compile("Ia_store_([0-9]+)\)").findall(remove_line_break_space(condition))
+                            if matches and not matches[0] in owner_storage_addresses:
+                                owner_storage_addresses.append(matches[0])
+    if owner_storage_addresses:
+        message_value_sstores = []
+        for sstore in list_of_sstores:
+            if "Iv" in str(sstore["value"]):
+                if not sstore["variable"] in message_value_sstores:
+                    message_value_sstores.append(sstore["variable"])
+        message_sender_sstores = []
+        for sstore in list_of_sstores:
+            if str(sstore["address"]).isdigit():
+                if "Is" in str(sstore["value"]):
+                    variables = []
+                    for condition in sstore["path_condition"]:
+                        if is_expr(condition):
+                            for var in get_vars(condition):
+                                if not str(var) in variables:
+                                    variables.append(str(var))
+                        if "Iv" in str(condition) and "Ia_store" in str(condition):
+                            if not sstore in message_sender_sstores:
+                                message_sender_sstores.append(sstore)
+                    # Check if variables are identical to constructor variables
+                    if set(variables) == set(['Iv', 'init_Is', 'init_Ia', 'Id_size', 'Id_1']):
+                        message_sender_sstores.append(sstore)
+                if "Extract(159, 0, Id_" in str(sstore["value"]):
+                    for condition in sstore["path_condition"]:
+                        if is_expr(condition):
+                            for var in message_value_sstores:
+                                if var in get_vars(condition):
+                                    message_sender_sstores.append(sstore)
+        # Check that message sender is not used in calls
+        for sstore in message_sender_sstores:
+            used = False
+            for sstore_2 in list_of_sstores:
+                if str(sstore["address"]) in str(sstore_2["variable"]) and sstore_2["function_signature"] != sstore["function_signature"]:
+                    used = True
                     break
-    log.debug("data concurrency in storage " + str(concurrency_addr))
+            for comparison in list_of_comparisons:
+                if is_expr(comparison) and sstore["variable"] in get_vars(comparison):
+                    used = True
+                    break
+            for index in list_of_calls:
+                for call in list_of_calls[index]:
+                    if sstore["function_signature"] == call["function_signature"]:
+                        used = True
+                        break
+                    if is_expr(call["recipient"]) and sstore["variable"] in get_vars(call["recipient"]):
+                        used = True
+                        break
+                if used:
+                    break
+            for suicide in list_of_suicides:
+                if sstore["function_signature"] == suicide["function_signature"]:
+                    used = True
+                    break
+            if not used:
+                # Check that the message sender is not stored in owner location
+                if not sstore["address"] in owner_storage_addresses:
+                    heuristic = {}
+                    heuristic["function_signature"] = sstore["function_signature"]
+                    heuristic["block"]              = sstore["block"]
+                    heuristic["type"]               = HeuristicTypes.INHERITANCE_DISORDER
+                    heuristic["pc"]                 = sstore["pc"]
+                    if not heuristic in heuristics:
+                        heuristics.append(heuristic)
 
-# Detect if any change in a storage address will result in a different
-# flow of money. Currently I implement this detection by
-# considering if a path condition contains
-# a variable which is a storage address.
-def detect_data_money_concurrency():
-    n = len(money_flow_all_paths)
-    sstore_flows = data_flow_all_paths[1]
-    concurrency_addr = []
-    for i in range(n):
-        cond = path_conditions[i]
-        list_vars = []
-        for expr in cond:
-            list_vars += get_vars(expr)
-        set_vars = set(i.decl().name() for i in list_vars)
-        for sflow in sstore_flows:
-            for addr in sflow:
-                var_name = gen.gen_owner_store_var(addr)
-                if var_name in set_vars:
-                    concurrency_addr.append(var_name)
-    log.debug("Concurrency in data that affects money flow: " + str(set(concurrency_addr)))
+########################################################
+#               H4: Uninitialised Structs              #
+########################################################
+def detect_uninitialised_structs():
+    list_of_relevant_sstores = []
+    for struct in list_of_structs:
+        for sstore in list_of_sstores:
+            if struct["pc"] == sstore["pc"]:
+                if not sstore in list_of_relevant_sstores:
+                    list_of_relevant_sstores.append(sstore)
+    for sstore in list_of_relevant_sstores:
+        for index in list_of_calls:
+            for call in list_of_calls[index]:
+                for condition in call["path_condition"]:
+                    if "Is" in str(call["recipient"]) and str(call["value"]) == "balance_Ia" and is_expr(condition) and sstore["variable"] in get_vars(condition):
+                        heuristic = {}
+                        heuristic["function_signature"] = sstore["function_signature"]
+                        heuristic["block"]              = sstore["block"]
+                        heuristic["type"]               = HeuristicTypes.UNINITIALISED_STRUCT
+                        heuristic["pc"]                 = sstore["pc"]
+                        if not heuristic in heuristics:
+                            heuristics.append(heuristic)
+                if call["value"] == sstore["value"] and (is_expr(call["value"]) or call["value"] > 0):
+                    heuristic = {}
+                    heuristic["function_signature"] = sstore["function_signature"]
+                    heuristic["block"]              = sstore["block"]
+                    heuristic["type"]               = HeuristicTypes.UNINITIALISED_STRUCT
+                    heuristic["pc"]                 = sstore["pc"]
+                    if not heuristic in heuristics:
+                        heuristics.append(heuristic)
+        for suicide in list_of_suicides:
+            for condition in suicide["path_condition"]:
+                if is_expr(condition) and sstore["variable"] in get_vars(condition):
+                    heuristic = {}
+                    heuristic["function_signature"] = sstore["function_signature"]
+                    heuristic["block"]              = sstore["block"]
+                    heuristic["type"]               = HeuristicTypes.UNINITIALISED_STRUCT
+                    heuristic["pc"]                 = sstore["pc"]
+                    if not heuristic in heuristics:
+                        heuristics.append(heuristic)
 
+########################################################
+#              H5: Type Deduction Overflow             #
+########################################################
+def detect_type_deduction_overflow():
+    s = Solver()
+    s.set("timeout", global_params.TIMEOUT)
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if "Is" in str(call["recipient"]) and call["input_size"] == 0 and not is_expr(call["value"]) and call["value"] > 0:
+                for mul_pc in list_of_multiplications:
+                    if mul_pc < call["pc"]:
+                        for var_pc in list_of_vars:
+                            if mul_pc == var_pc-3:
+                                if call["value"] in list_of_multiplications[mul_pc] \
+                                and call["value"] in list_of_vars[var_pc]:
+                                    heuristic = {}
+                                    heuristic["function_signature"] = call["function_signature"]
+                                    heuristic["block"]              = call["block"]
+                                    heuristic["type"]               = HeuristicTypes.TYPE_DEDUCTION_OVERFLOW
+                                    heuristic["pc"]                 = mul_pc
+                                    if not heuristic in heuristics:
+                                        heuristics.append(heuristic)
+                for add_pc in list_of_additions:
+                    for var_pc in list_of_vars:
+                        if add_pc < var_pc < call["pc"]:
+                            if call["value"] in list_of_additions[add_pc] \
+                            and call["value"] in list_of_vars[var_pc]:
+                                path_conditions = copy.deepcopy(call["path_condition"])
+                                if False in path_conditions:
+                                    path_conditions.remove(False)
+                                s.reset()
+                                s.add(path_conditions)
+                                s.add(message_value > 0)
+                                s.add(message_value != 0)
+                                if s.check() == sat:
+                                    heuristic = {}
+                                    heuristic["function_signature"] = call["function_signature"]
+                                    heuristic["block"]              = call["block"]
+                                    heuristic["type"]               = HeuristicTypes.TYPE_DEDUCTION_OVERFLOW
+                                    heuristic["pc"]                 = add_pc
+                                    if not heuristic in heuristics:
+                                        heuristics.append(heuristic)
 
+########################################################
+#             H6: Skip Empty String Literal            #
+########################################################
+def detect_skip_empty_string_literal():
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if isReal(call["input_size"]) and call["input_size"] > 0 and is_expr(call["recipient"]) and any([True for var in get_vars(call["recipient"]) if str(var) == "Ia"]):
+                if call["input_offset"] in call["memory"]:
+                    function_signature = call["memory"][call["input_offset"]]/26959946667150639794667015087019630673637144422540572481103610249216L
+                    if function_signature in list_of_functions and len(list_of_functions[function_signature]) != call["input_size"]/32:
+                        for index2 in list_of_calls:
+                            for call2 in list_of_calls[index2]:
+                                if function_signature == call2["function_signature"]:
+                                    if call2["type"] == "CALL" and call2["input_size"] == 0 and "Id_" in str(call2["recipient"]):
+                                        heuristic = {}
+                                        heuristic["function_signature"] = call2["function_signature"]
+                                        heuristic["block"]              = call2["block"]
+                                        heuristic["type"]               = HeuristicTypes.SKIP_EMPTY_STRING_LITERAL
+                                        heuristic["pc"]                 = call2["pc"]
+                                        if not heuristic in heuristics:
+                                            heuristics.append(heuristic)
 
-def check_callstack_attack(disasm):
-    problematic_instructions = ['CALL', 'CALLCODE']
-    pcs = []
-    for i in xrange(0, len(disasm)):
-        instruction = disasm[i]
-        if instruction[1] in problematic_instructions:
-            pc = int(instruction[0])
-            if not disasm[i+1][1] == 'SWAP':
-                continue
-            swap_num = int(disasm[i+1][2])
-            for j in range(swap_num):
-                if not disasm[i+j+2][1] == 'POP':
-                    continue
-            opcode1 = disasm[i + swap_num + 2][1]
-            opcode2 = disasm[i + swap_num + 3][1]
-            opcode3 = disasm[i + swap_num + 4][1]
-            if opcode1 == "ISZERO" \
-                or opcode1 == "DUP" and opcode2 == "ISZERO" \
-                or opcode1 == "JUMPDEST" and opcode2 == "ISZERO" \
-                or opcode1 == "JUMPDEST" and opcode2 == "DUP" and opcode3 == "ISZERO":
-                    pass
-            else:
-                pcs.append(pc)
-    return pcs
+########################################################
+#                H7: Hidden State Update               #
+########################################################
+def detect_hidden_state_update():
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if call["input_size"] == 0 and "Is" in str(call["recipient"]) and (isReal(call["value"]) or str(call["value"]) == "balance_Ia"):
+                new_path_conditions = []
+                for condition in call["path_condition"]:
+                    if not any(value in str(condition) for value in ["balance_Ia > 0", "balance_Ia == balance_Ia + Iv"]):
+                        new_path_conditions.append(condition)
+                s = Solver()
+                s.set("timeout", global_params.TIMEOUT)
+                s.add(new_path_conditions)
+                if s.check() == sat:
+                    check_if_path_conditions_depend_on_storage(call, [], 0)
 
+def get_function_signature_from_path_condition(path_condition):
+    for condition in path_condition:
+        if is_expr(condition) and str(condition).startswith("If(Extract(255, 224, Id_1) == "):
+            match = re.compile("Extract\(255, 224, Id_1\) == ([0-9]+)").findall(str(condition))
+            if match:
+                return int(match[0])
+    return None
 
-def detect_callstack_attack():
-    global results
-    global source_map
-    global validator
-    global any_bug
+def extract_storage_location_range(condition, variable):
+    if is_expr(condition):
+        matches = re.compile("Extract\((.+?), (.+?), "+str(variable)+"\)").findall(str(simplify(condition)))
+        if matches:
+            return matches[0]
+    return None
 
-    disasm_data = open(c_name).read()
-    instr_pattern = r"([\d]+) ([A-Z]+)([\d]+)?(?: => 0x)?(\S+)?"
-    instr = re.findall(instr_pattern, disasm_data)
-    pcs = check_callstack_attack(instr)
-    pcs = validator.remove_callstack_false_positives(pcs)
+def check_if_path_conditions_depend_on_storage(origin, visitedx, depth):
+    message_value_comparison = []
+    for condition in origin["path_condition"]:
+        if "Iv" in str(condition) and not any(value in str(condition) for value in ["Iv >= 0", "init_Is >= Iv", "balance_Ia == balance_Ia + Iv", "init_Ia + Iv", "If(Iv == 0, 1, 0) != 0"]):
+            message_value_comparison.append(condition)
+    s = Solver()
+    s.set("timeout", global_params.TIMEOUT)
+    if message_value_comparison:
+        if not any([True for comparison in message_value_comparison if is_expr(comparison) and any([True for var in get_vars(comparison) if not "Iv" == str(var) and not "Ia_store_" in str(var)])]):
+            for condition in origin["path_condition"]:
+                if "Ia_store" in str(condition) and not "Iv" in str(condition):
+                    for var in get_vars(condition):
+                        if str(var).startswith("Ia_store"):
+                            storage_location_range = extract_storage_location_range(condition, var)
+                            visited_pcs = []
+                            for sstore in list_of_sstores:
+                                if not sstore["pc"] in visited_pcs and sstore["function_signature"] != origin["function_signature"]:
+                                    if sstore["variable"] == var and isReal(sstore["address"]) and isSymbolic(sstore["value"]) and any([True for var in get_vars(sstore["value"]) if "Id_" in str(var) or "Ia_store_" in str(var)]):
+                                        if storage_location_range == None:
+                                            if not any([True for path_condition in sstore["path_condition"] if is_expr(path_condition) and sstore["variable"] in get_vars(path_condition)]):
+                                                s.reset()
+                                                message_value_path_conditions = []
+                                                for condition in sstore["path_condition"]:
+                                                    if "Iv" in str(condition):
+                                                        message_value_path_conditions.append(condition)
+                                                s.add(message_value_path_conditions)
+                                                s.add(message_value == 0)
+                                                if s.check() == sat:
+                                                    s.reset()
+                                                    s.add(origin["path_condition"])
+                                                    s.add(sstore["variable"] == sstore["value"])
+                                                    if s.check() == unsat:
+                                                        visited_pcs.append(sstore["pc"])
+                                                        heuristic = {}
+                                                        heuristic["function_signature"] = sstore["function_signature"]
+                                                        heuristic["block"]              = sstore["block"]
+                                                        heuristic["type"]               = HeuristicTypes.HIDDEN_STATE_UPDATE
+                                                        heuristic["pc"]                 = sstore["pc"]
+                                                        if not heuristic in heuristics:
+                                                            heuristics.append(heuristic)
+                                        else:
+                                            if not any([True for path_condition in sstore["path_condition"] if storage_location_range == extract_storage_location_range(path_condition, sstore["variable"])]):
+                                                s.reset()
+                                                message_value_path_conditions = []
+                                                for condition in sstore["path_condition"]:
+                                                    if "Iv" in str(condition):
+                                                        message_value_path_conditions.append(condition)
+                                                s.add(message_value_path_conditions)
+                                                s.add(message_value == 0)
+                                                if s.check() == sat:
+                                                    s.reset()
+                                                    s.add(origin["path_condition"])
+                                                    s.add(sstore["variable"] == sstore["value"])
+                                                    if s.check() == unsat:
+                                                        visited_pcs.append(sstore["pc"])
+                                                        heuristic = {}
+                                                        heuristic["function_signature"] = sstore["function_signature"]
+                                                        heuristic["block"]              = sstore["block"]
+                                                        heuristic["type"]               = HeuristicTypes.HIDDEN_STATE_UPDATE
+                                                        heuristic["pc"]                 = sstore["pc"]
+                                                        if not heuristic in heuristics:
+                                                            heuristics.append(heuristic)
+    else:
+        for condition_1 in origin["path_condition"]:
+            if "Ia_store" in str(condition_1):
+                for var_1 in get_vars(condition_1):
+                    if str(var_1).startswith("Ia_store"):
+                        visited_pcs = []
+                        for sstore_1 in list_of_sstores:
+                            if not sstore_1["pc"] in visited_pcs and sstore_1["function_signature"] != origin["function_signature"]:
+                                if sstore_1["variable"] == var_1 and isReal(sstore_1["address"]) and isSymbolic(sstore_1["value"]) and any([True for var in get_vars(sstore_1["value"]) if "Id_" in str(var) or "Ia_store_" in str(var)]):
+                                    s.reset()
+                                    s.add(sstore_1["path_condition"])
+                                    s.add(message_value > 0)
+                                    s.add(message_value != 0)
+                                    if s.check() == sat:
+                                        visited_pcs.append(sstore_1["pc"])
+                                        for condition_2 in sstore_1["path_condition"]:
+                                            if "Ia_store" in str(condition_2):
+                                                for var_2 in get_vars(condition_2):
+                                                    if str(var_2).startswith("Ia_store"):
+                                                        for sstore_2 in list_of_sstores:
+                                                            if not sstore_2["pc"] in visited_pcs and sstore_2["function_signature"] != sstore_1["function_signature"] and sstore_2["function_signature"] != origin["function_signature"]:
+                                                                if sstore_2["variable"] == var_2 and isReal(sstore_2["address"]) and is_expr(sstore_2["value"]) and any([True for var in get_vars(sstore_2["value"]) if "Id_" in str(var) or "Ia_store_" in str(var)]):
+                                                                    s.reset()
+                                                                    message_value_path_conditions = []
+                                                                    for condition in sstore_2["path_condition"]:
+                                                                        if "Iv" in str(condition):
+                                                                            message_value_path_conditions.append(condition)
+                                                                    s.add(message_value_path_conditions)
+                                                                    s.add(message_value == 0)
+                                                                    if s.check() == sat:
+                                                                        s.reset()
+                                                                        s.add(sstore_1["path_condition"])
+                                                                        s.add(sstore_2["variable"] == sstore_2["value"])
+                                                                        if s.check() == unsat:
+                                                                            visited_pcs.append(sstore_2["pc"])
+                                                                            heuristic = {}
+                                                                            heuristic["function_signature"] = sstore_2["function_signature"]
+                                                                            heuristic["block"]              = sstore_2["block"]
+                                                                            heuristic["type"]               = HeuristicTypes.HIDDEN_STATE_UPDATE
+                                                                            heuristic["pc"]                 = sstore_2["pc"]
+                                                                            if not heuristic in heuristics:
+                                                                                heuristics.append(heuristic)
+
+########################################################
+#                 H8: Straw Man Contract               #
+########################################################
+def detect_straw_man_contract():
+    call_pcs = []
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if not call["pc"] in call_pcs:
+                call_pcs.append(call["pc"])
+    for index in list_of_calls:
+        for call in list_of_calls[index]:
+            if call["type"] == "CALL" and (is_expr(call["value"]) or call["value"] > 0) and ("Id_" in str(call["recipient"]) or "Is" in str(call["recipient"])) and call["input_size"] == 0:
+                for index2 in list_of_calls:
+                    for call2 in list_of_calls[index2]:
+                        if call["pc"] != call2["pc"] \
+                        and call["function_signature"] == call2["function_signature"] \
+                        and str(call["recipient"]) != str(call2["recipient"]) \
+                        and "Ia_store_" in str(call2["recipient"]) \
+                        and (is_expr(call2["input_size"]) or call2["input_size"] > 0) \
+                        and any([True for index in execution_paths if call["pc"] in execution_paths[index] and call2["pc"] in execution_paths[index] and len(list(set(call_pcs) & set(execution_paths[index]))) == 2]) \
+                        and all(condition in call2["path_condition"] for condition in call["path_condition"]):
+                            if call2["type"] == "DELEGATECALL" and call["pc"] > call2["pc"] and str(call["value"]) == str(account_balance) and ("Is" in str(call["recipient"]) or "Id" in str(call["recipient"])):
+                                message_value_path_conditions = []
+                                for condition in call["path_condition"]:
+                                    if "Iv" in str(condition):
+                                        message_value_path_conditions.append(condition)
+                                message_value_path_conditions2 = []
+                                for condition in call2["path_condition"]:
+                                    if "Iv" in str(condition):
+                                        message_value_path_conditions2.append(condition)
+                                if any([True for condition in message_value_path_conditions if "Iv" in str(condition) and "Ia_store" in str(condition)]) \
+                                and any([True for condition in message_value_path_conditions2 if "Iv" in str(condition) and "Ia_store" in str(condition)]):
+                                    heuristic = {}
+                                    heuristic["function_signature"] = call2["function_signature"]
+                                    heuristic["block"]              = call2["block"]
+                                    heuristic["type"]               = HeuristicTypes.STRAW_MAN_CONTRACT
+                                    heuristic["pc"]                 = call2["pc"]
+                                    if not heuristic in heuristics:
+                                        heuristics.append(heuristic)
+                            if call2["type"] == "CALL" and call["pc"] < call2["pc"] and not "2300" in str(call["gas"]) and call["input_size"] == 0 and not is_expr(call2["input_size"]) and any([True for i in range(call2["input_size"]/32) if call2["input_offset"]+4+i*32 in call2["memory"] and "Is" in str(call2["memory"][call2["input_offset"]+4+i*32])]):
+                                heuristic = {}
+                                heuristic["function_signature"] = call2["function_signature"]
+                                heuristic["block"]              = call2["block"]
+                                heuristic["type"]               = HeuristicTypes.STRAW_MAN_CONTRACT
+                                heuristic["pc"]                 = call2["pc"]
+                                if not heuristic in heuristics:
+                                    heuristics.append(heuristic)
+
+def detect_honeypots():
+    if detect_cash_flow():
+        if global_params.DEBUG_MODE:
+            log.info("\t--------- Begin Time ---------")
+            start_time = time.time()
+        detect_balance_disorder()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Balance disorder: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_hidden_transfer()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Hidden transfer: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_inheritance_disorder()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Inheritance disorder: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_uninitialised_structs()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Uninitialised structs:  "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_type_deduction_overflow()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Type overflow: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_skip_empty_string_literal()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Skip empty string: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_hidden_state_update()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Hidden state update: \t "+str(math.ceil(elapsed_time))+" seconds")
+            start_time = time.time()
+        detect_straw_man_contract()
+        if global_params.DEBUG_MODE:
+            elapsed_time = time.time() - start_time
+            log.info("\t Straw man contract: \t "+str(math.ceil(elapsed_time))+" seconds")
+            log.info("\t---------- End Time ----------")
+
+    money_flow_found                = any([HeuristicTypes.MONEY_FLOW                in heuristic["type"] for heuristic in heuristics])
+    balance_disorder_found          = any([HeuristicTypes.BALANCE_DISORDER          in heuristic["type"] for heuristic in heuristics])
+    hidden_transfer_found           = any([HeuristicTypes.HIDDEN_TRANSFER           in heuristic["type"] for heuristic in heuristics])
+    inheritance_disorder_found      = any([HeuristicTypes.INHERITANCE_DISORDER      in heuristic["type"] for heuristic in heuristics])
+    uninitialised_struct_found      = any([HeuristicTypes.UNINITIALISED_STRUCT      in heuristic["type"] for heuristic in heuristics])
+    type_deduction_overflow_found   = any([HeuristicTypes.TYPE_DEDUCTION_OVERFLOW   in heuristic["type"] for heuristic in heuristics])
+    skip_empty_string_literal_found = any([HeuristicTypes.SKIP_EMPTY_STRING_LITERAL in heuristic["type"] for heuristic in heuristics])
+    hidden_state_update_found       = any([HeuristicTypes.HIDDEN_STATE_UPDATE       in heuristic["type"] for heuristic in heuristics])
+    straw_man_contract_found        = any([HeuristicTypes.STRAW_MAN_CONTRACT        in heuristic["type"] for heuristic in heuristics])
 
     if source_map:
-        pcs = validator.remove_false_positives(pcs)
-        s = source_map.to_str(pcs, "Callstack bug")
+        # Money flow
+        results["money_flow"] = money_flow_found
+        s = "\t Money flow:    \t "+str(money_flow_found)
+        log.info(s)
+        # Balance disorder
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.BALANCE_DISORDER in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Balance disorder")
         if s:
-            any_bug = True
-            results["callstack"] = s
-        s = "\t  Callstack bug: \t True" + s if s else "\t  Callstack bug: \t False"
+            results["balance_disorder"] = s
+        s = "\t Balance disorder: \t "+str(balance_disorder_found) + s
+        log.info(s)
+        # Hidden transfer
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.HIDDEN_TRANSFER in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Hidden transfer")
+        if s:
+            results["hidden_transfer"] = s
+        s = "\t Hidden transfer: \t "+str(hidden_transfer_found) + s
+        log.info(s)
+        # Inheritance disorder
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.INHERITANCE_DISORDER in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Inheritance disorder")
+        if s:
+            results["inheritance_disorder"] = s
+        s = "\t Inheritance disorder: \t "+str(inheritance_disorder_found) + s
+        log.info(s)
+        # Uninitialised struct
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.UNINITIALISED_STRUCT in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Uninitialised struct")
+        if s:
+            results["uninitialised_struct"] = s
+        s = "\t Uninitialised struct: \t "+str(uninitialised_struct_found) + s
+        log.info(s)
+        # Type deduction overflow
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.TYPE_DEDUCTION_OVERFLOW in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Type deduction overflow")
+        if s:
+            results["type_deduction_overflow"] = s
+        s = "\t Type overflow: \t "+str(type_deduction_overflow_found) + s
+        log.info(s)
+        # Skip empty string literal
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.SKIP_EMPTY_STRING_LITERAL in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Skip empty string literal")
+        if s:
+            results["skip_empty_string_literal"] = s
+        s = "\t Skip empty string: \t "+str(skip_empty_string_literal_found) + s
+        log.info(s)
+        # Hidden State Update
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.HIDDEN_STATE_UPDATE in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Hidden state update")
+        if s:
+            results["hidden_state_update"] = s
+        s = "\t Hidden state update: \t "+str(hidden_state_update_found) + s
+        log.info(s)
+        # Straw Man Contract
+        pcs = [heuristic["pc"] for heuristic in heuristics if HeuristicTypes.STRAW_MAN_CONTRACT in heuristic["type"]]
+        pcs = [pc for pc in pcs if source_map.find_source_code(pc)]
+        pcs = source_map.reduce_same_position_pcs(pcs)
+        s = source_map.to_str(pcs, "Straw man contract")
+        if s:
+            results["straw_man_contract"] = s
+        s = "\t Straw man contract: \t "+str(straw_man_contract_found) + s
         log.info(s)
     else:
-        results["callstack"] = bool(pcs)
-        log.info("\t  Callstack bug: \t %s", bool(pcs))
-
-def detect_reentrancy():
-    global source_map
-    global validator
-    global any_bug
-    global results
-
-    reentrancy_bug_found = any([v for sublist in reentrancy_all_paths for v in sublist])
-    if source_map:
-        pcs = global_problematic_pcs["reentrancy_bug"]
-        pcs = validator.remove_false_positives(pcs)
-        s = source_map.to_str(pcs, "Reentrancy bug")
-        if s:
-            any_bug = True
-            results["reentrancy"] = s
-        s = "\t  Reentrancy bug: \t True" + s if s else "\t  Reentrancy bug: \t False"
+        # Money flow
+        results["money_flow"] = money_flow_found
+        s = "\t Money flow:    \t "+str(money_flow_found)
         log.info(s)
-    else:
-        results["reentrancy"] = reentrancy_bug_found
-        log.info("\t  Reentrancy bug: \t %s", reentrancy_bug_found)
-
-def detect_assertion_failure():
-    global source_map
-    global any_bug
-    global results
-
-    assertions = global_problematic_pcs["assertion_failure"]
-    d = {}
-    for asrt in assertions:
-        pos = str(source_map.instr_positions[asrt.pc])
-        if pos not in d:
-            d[pos] = asrt
-    assertions = d.values()
-
-    s = ""
-    for asrt in assertions:
-        location = source_map.get_location(asrt.pc)
-        source_code = source_map.find_source_code(asrt.pc).split("\n", 1)[0]
-        if global_params.WEB:
-            s += "%s:%s:%s: Assertion failure:<br />" % (source_map.cname.split(":", 1)[1], location['begin']['line'] + 1, location['begin']['column'] + 1)
-            s += "<span style='margin-left: 20px'>%s</span><br />" % source_code
-            s += "<span style='margin-left: 20px'>^</span><br />"
-            for variable in asrt.model.decls():
-                var_name = str(variable)
-                if len(var_name.split("-")) > 2:
-                    var_name = var_name.split("-")[2]
-                if source_map.is_a_parameter_or_state_variable(var_name):
-                    s += "<span style='margin-left: 20px'>" + var_name + " = " + str(asrt.model[variable]) + "</span>" + "<br />"
-        else:
-            s += "\n%s:%s:%s\n" % (source_map.cname, location['begin']['line'] + 1, location['begin']['column'] + 1)
-            s += source_code + "\n"
-            s += "^\n"
-            for variable in asrt.model.decls():
-                var_name = str(variable)
-                if len(var_name.split("-")) > 2:
-                    var_name = var_name.split("-")[2]
-                if source_map.is_a_parameter_or_state_variable(var_name):
-                    s += var_name + " = " + str(asrt.model[variable]) + "\n"
-
-    if s:
-        any_bug = True
-        results["assertion_failure"] = s
-    s = "\t  Assertion failure: \t True" + s if s else "\t  Assertion failure: \t False"
-    log.info(s)
+        # Balance disorder
+        results["balance_disorder"] = balance_disorder_found
+        s = "\t Balance disorder: \t "+str(balance_disorder_found)
+        log.info(s)
+        # Hidden transfer
+        results["hidden_transfer"] = hidden_transfer_found
+        s = "\t Hidden transfer: \t "+str(hidden_transfer_found)
+        log.info(s)
+        # Inheritance disorder
+        results["inheritance_disorder"] = inheritance_disorder_found
+        s = "\t Inheritance disorder: \t "+str(inheritance_disorder_found)
+        log.info(s)
+        # Uninitialised struct
+        results["uninitialised_struct"] = uninitialised_struct_found
+        s = "\t Uninitialised struct: \t "+str(uninitialised_struct_found)
+        log.info(s)
+        # Type deduction overflow
+        results["type_deduction_overflow"] = type_deduction_overflow_found
+        s = "\t Type overflow: \t "+str(type_deduction_overflow_found)
+        log.info(s)
+        # Skip empty string literal
+        results["skip_empty_string_literal"] = skip_empty_string_literal_found
+        s = "\t Skip empty string: \t "+str(skip_empty_string_literal_found)
+        log.info(s)
+        # Hidden state update
+        results["hidden_state_update"] = hidden_state_update_found
+        s = "\t Hidden state update: \t "+str(hidden_state_update_found)
+        log.info(s)
+        # Straw man contract
+        results["straw_man_contract"] = straw_man_contract_found
+        s = "\t Straw man contract: \t "+str(straw_man_contract_found)
+        log.info(s)
 
 def detect_bugs():
-    if isTesting():
-        return
-
     global results
+    global g_timeout
     global source_map
     global visited_pcs
-    global global_problematic_pcs
-    global any_bug
+
+    if global_params.DEBUG_MODE:
+        print "Number of total paths: "+str(total_no_of_paths)
+        print ""
 
     if instructions:
         evm_code_coverage = float(len(visited_pcs)) / len(instructions.keys()) * 100
-        log.info("\t  EVM code coverage: \t %s%%", round(evm_code_coverage, 1))
+        log.info("\t EVM code coverage: \t %s%%", round(evm_code_coverage, 1))
         results["evm_code_coverage"] = str(round(evm_code_coverage, 1))
 
-        log.debug("Checking for Callstack attack...")
-        detect_callstack_attack()
+        dead_code = list(set(instructions.keys()) - set(visited_pcs))
+        for pc in dead_code:
+            results["dead_code"].append(instructions[pc])
 
-        if global_params.REPORT_MODE:
-            rfile.write(str(total_no_of_paths) + "\n")
+        detect_honeypots()
 
-        detect_money_concurrency()
-        detect_time_dependency()
+        stop_time = time.time()
+        results["execution_time"] = str(stop_time-start_time)
+        log.info("\t --- "+str(stop_time - start_time)+" seconds ---")
 
-        stop = time.time()
-        if global_params.REPORT_MODE:
-            rfile.write(str(stop-start))
-            rfile.close()
-        if global_params.DATA_FLOW:
-            detect_data_concurrency()
-            detect_data_money_concurrency()
-
-        log.debug("Results for Reentrancy Bug: " + str(reentrancy_all_paths))
-        detect_reentrancy()
-
-        if global_params.CHECK_ASSERTIONS:
-            if source_map:
-                detect_assertion_failure()
-            else:
-                raise Exception("Assertion checks need a Source Map")
+        results["execution_paths"] = str(total_no_of_paths)
+        results["timeout"] = g_timeout
     else:
-        log.info("\t  EVM code coverage: \t 0/0")
-        log.info("\t  Callstack bug: \t False")
-        log.info("\t  Money concurrency bug: False")
-        log.info("\t  Time dependency bug: \t False")
-        log.info("\t  Reentrancy bug: \t False")
-        if global_params.CHECK_ASSERTIONS:
-            log.info("\t  Assertion failure: \t False")
-        results["evm_code_coverage"] = "0/0"
+        log.info("\t EVM code coverage: \t 0.0")
+        log.info("\t Money flow: \t False")
+        log.info("\t Balance disorder: \t False")
+        log.info("\t Hidden transfer: \t False")
+        log.info("\t Inheritance disorder: \t False")
+        log.info("\t Uninitialised struct: \t False")
+        log.info("\t Type overflow: \t False")
+        log.info("\t Skip empty string: \t False")
+        log.info("\t Hidden state update: \t False")
+        log.info("\t Straw man contract: \t False")
+        log.info("\t  --- 0.0 seconds ---")
+        results["evm_code_coverage"] = "0.0"
+        results["execution_paths"] = str(total_no_of_paths)
+        results["timeout"] = g_timeout
 
-    if global_params.WEB:
-        results_for_web()
-
-    if not os.path.isfile("bug_found") and any_bug:
-        with open("bug_found", "w") as f:
-            f.write(str(any_bug))
+    if len(heuristics) > 0:
+        for heuristic in heuristics:
+            if heuristic["function_signature"]:
+                if heuristic["function_signature"]:
+                    method = "{0:#0{1}x}".format(heuristic["function_signature"], 10)
+                else:
+                    method = ""
+                if not method in results["attack_methods"]:
+                    results["attack_methods"].append(method)
+        for index in list_of_calls:
+            for call in list_of_calls[index]:
+                if call["type"] == "CALL" and call["input_size"] == 0:
+                    if call["function_signature"]:
+                        method = "{0:#0{1}x}".format(call["function_signature"], 10)
+                    else:
+                        method = ""
+                    if not method in results["cashout_methods"]:
+                        results["cashout_methods"].append(method)
 
 def closing_message():
-    global c_name_sol
+    global c_name
     global results
 
     log.info("\t====== Analysis Completed ======")
     if global_params.STORE_RESULT:
-        result_file = c_name_sol + '.json'
-        with open(result_file, 'w') as of:
-            of.write(json.dumps(results, indent=1))
+        result_file = os.path.join(global_params.RESULTS_DIR, c_name+'.json'.split('/')[-1])
+        if '.sol' in c_name:
+            result_file = os.path.join(global_params.RESULTS_DIR, c_name.split(':')[0].replace('.sol', '.json').split('/')[-1])
+        elif '.bin.evm.disasm' in c_name:
+            result_file = os.path.join(global_params.RESULTS_DIR, c_name.replace('.bin.evm.disasm', '.json').split('/')[-1])
+        mode = 'a'
+        if global_params.BYTECODE:
+            mode = 'w'
+        if not os.path.isfile(result_file):
+            with open(result_file, mode) as of:
+                if ':' in c_name:
+                    of.write("{")
+                    of.write('"'+str(c_name.split(':')[1].replace('.evm.disasm', ''))+'":')
+                of.write(json.dumps(results, indent=1))
+        else:
+            with open(result_file, mode) as of:
+                if ':' in c_name:
+                    of.write(",")
+                    of.write('"'+str(c_name.split(':')[1].replace('.evm.disasm', ''))+'":')
+                of.write(json.dumps(results, indent=1))
         log.info("Wrote results to %s.", result_file)
 
 def handler(signum, frame):
-    if global_params.UNIT_TEST == 2 or global_params.UNIT_TEST == 3:
-        exit(TIME_OUT)
-    detect_bugs()
+    global g_timeout
+
+    print "!!! SYMBOLIC EXECUTION TIMEOUT !!!"
+    g_timeout = True
     raise Exception("timeout")
-
-def results_for_web():
-    global results
-
-    results["filename"] = source_map.cname.split(":")[0].split("/")[-1]
-    results["cname"] = source_map.cname.split(":")[1]
-    print "======= results ======="
-    print json.dumps(results)
 
 def main(contract, contract_sol, _source_map = None):
     global c_name
     global c_name_sol
     global source_map
-    global validator
+    global start_time
 
     c_name = contract
     c_name_sol = contract_sol
     source_map = _source_map
-    validator = Validator(source_map)
 
-    check_unit_test_file()
     initGlobalVars()
     set_cur_file(c_name[4:] if len(c_name) > 5 else c_name)
-    start = time.time()
-    signal.signal(signal.SIGALRM, handler)
-    if global_params.UNIT_TEST == 2 or global_params.UNIT_TEST == 3:
-        global_params.GLOBAL_TIMEOUT = global_params.GLOBAL_TIMEOUT_TEST
-    signal.alarm(global_params.GLOBAL_TIMEOUT)
-    atexit.register(closing_message)
+    start_time = time.time()
+    if hasattr(signal, 'SIGALRM'):
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(global_params.GLOBAL_TIMEOUT)
 
     log.info("Running, please wait...")
-
-    if not isTesting():
-        log.info("\t============ Results ===========")
 
     try:
         build_cfg_and_analyze()
         log.debug("Done Symbolic execution")
     except Exception as e:
-        if global_params.UNIT_TEST == 2 or global_params.UNIT_TEST == 3:
-            log.exception(e)
-            exit(EXCEPTION)
-        traceback.print_exc()
-        raise e
-    signal.alarm(0)
+        if global_params.DEBUG_MODE:
+            traceback.print_exc()
+        if str(e) == "timeout":
+            pass
+        else:
+            print("Contract: "+str(c_name_sol))
+            pass
+
+    if callable(getattr(signal, "alarm", None)):
+        signal.alarm(0)
+
+    log.info("\t============ Results ===========")
 
     detect_bugs()
+    closing_message()
 
 if __name__ == '__main__':
     main(sys.argv[1])

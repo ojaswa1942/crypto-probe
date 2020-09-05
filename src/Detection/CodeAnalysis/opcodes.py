@@ -38,7 +38,8 @@ opcodes = {
     "GASPRICE": [0x3a, 0, 1],
     "EXTCODESIZE": [0x3b, 1, 1],
     "EXTCODECOPY": [0x3c, 4, 0],
-    "MCOPY": [0x3d, 3, 0],
+    "RETURNDATASIZE": [0x3d, 0, 1],
+    "RETURNDATACOPY": [0x3e, 3, 0],
     "BLOCKHASH": [0x40, 1, 1],
     "COINBASE": [0x41, 0, 1],
     "TIMESTAMP": [0x42, 0, 1],
@@ -82,7 +83,7 @@ opcodes = {
     "STATEROOT": [0xfb, 1, 1],
     "TXEXECGAS": [0xfc, 0, 1],
     "CALLSTATIC": [0xfd, 7, 1],
-    "INVALID": [0xfe, 0, 0],  # Not an opcode use to cause an exception
+    "INVALID": [0xfe, 0, 0],  # Not an opcode, used to cause an exception
     "SUICIDE": [0xff, 1, 0],
     "---END---": [0x00, 0, 0]
 }

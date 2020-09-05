@@ -1,54 +1,75 @@
-import json
-import glob
-from tqdm import tqdm
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import subprocess
+import shlex
 import os
-import sys
-import urllib2
+import Queue
+import threading
+import multiprocessing
 
-contract_dir = 'contract_data'
+exitFlag = 0
+BYTECODE = True
 
-cfiles = glob.glob(contract_dir+'/contract1.json')
+class honeybadgerThread(threading.Thread):
+   def __init__(self, threadID, queue):
+      threading.Thread.__init__(self)
+      self.threadID = threadID
+      self.queue = queue
+   def run(self):
+      runHoneybadger(self.queue)
 
-cjson = {}
+def runHoneybadger(queue):
+    while not exitFlag:
+        queueLock.acquire()
+        if not queue.empty():
+            contract = queue.get()
+            queueLock.release()
+            print('Running Honeybadger on contract: '+str(contract).split('/')[-1])
+            cmd = ''
+            if BYTECODE:
+                cmd = 'python honeybadger.py -s '+str(contract)+' -b -j'
+            else:
+                cmd = 'python honeybadger.py -s '+str(contract)+' -j'
+            subprocess.call(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print('Running contract '+str(contract).split('/')[-1])+' finished.'
+        else:
+            queueLock.release()
 
-print "Loading contracts..."
+if __name__ == "__main__":
 
-for cfile in tqdm(cfiles):
-	cjson.update(json.loads(open(cfile).read()))
+    queueLock = threading.Lock()
+    queue = Queue.Queue()
 
-results = {}
-missed = []
+    # Create new threads
+    threads = []
+    threadID = 1
+    #for i in range(multiprocessing.cpu_count()):
+    for i in range(1):
+        thread = honeybadgerThread(threadID, queue)
+        thread.start()
+        threads.append(thread)
+        threadID += 1
 
-print "Running analysis..."
+    # Fill the queue with contracts
+    queueLock.acquire()
+    for file in os.listdir(os.path.join("..", "contracts")):
+        if BYTECODE and file.endswith(".bin") or not BYTECODE and file.endswith(".sol"):
+            #print(os.path.join(os.path.join("..", "contracts"), file))
+            queue.put(os.path.join(os.path.join("..", "contracts"), file))
+    queueLock.release()
 
-contracts = cjson.keys()
+    print('Verifying: '+str(queue.qsize())+'\n')
 
-if os.path.isfile('results.json'):
-	old_res = json.loads(open('results.json').read())
-	old_res = old_res.keys()
-	contracts = [c for c in contracts if c not in old_res]
+    # Wait for queue to empty
+    while not queue.empty():
+        pass
 
-cores=0
-job=0
+    # Notify threads it's time to exit
+    exitFlag = 1
 
-if len(sys.argv)>=3:
-	cores = int(sys.argv[1])
-	job = int(sys.argv[2])
-	contracts = contracts[(len(contracts)/cores)*job:(len(contracts)/cores)*(job+1)]
-	print "Job %d: Running on %d contracts..." % (job, len(contracts))
+    # Wait for all threads to complete
+    for t in threads:
+       t.join()
 
-for c in tqdm(contracts):
-	with open('tmp.evm','w') as of:
-		of.write(cjson[c][1][2:])
-	os.system('python oyente.py -ll 30 -s tmp.evm -j -b')
-	try:
-		results[c] = json.loads(open('tmp.evm.json').read())
-	except:
-		missed.append(c)
-	with open('results.json', 'w') as of:
-		of.write(json.dumps(results,indent=1))
-	with open('missed.json', 'w') as of:
-		of.write(json.dumps(missed,indent=1))
-	# urllib2.urlopen('https://dweet.io/dweet/for/oyente-%d-%d?completed=%d&missed=%d&remaining=%d' % (job,cores,len(results),len(missed),len(contracts)-len(results)-len(missed)))
-
-print "Completed."
+    print('\nDone')

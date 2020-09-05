@@ -1,5 +1,4 @@
 import json
-import global_params
 import ast
 from utils import run_command
 from ast_helper import AstHelper
@@ -53,14 +52,9 @@ class SourceMap:
                 continue
 
             location = self.get_location(pc)
-            if global_params.WEB:
-                s += "%s:%s:%s: %s:<br />" % (self.cname.split(":", 1)[1], location['begin']['line'] + 1, location['begin']['column'] + 1, bug_name)
-                s += "<span style='margin-left: 20px'>%s</span><br />" % source_code
-                s += "<span style='margin-left: 20px'>^</span><br />"
-            else:
-                s += "\n%s:%s:%s\n" % (self.cname, location['begin']['line'] + 1, location['begin']['column'] + 1)
-                s += source_code + "\n"
-                s += "^"
+            s += "\n%s:%s:%s\n" % (self.cname, location['begin']['line'] + 1, location['begin']['column'] + 1)
+            s += source_code + "\n"
+            s += "^"
         return s
 
     def get_location(self, pc):
