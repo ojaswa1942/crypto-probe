@@ -11,26 +11,26 @@ import multiprocessing
 exitFlag = 0
 BYTECODE = True
 
-class honeybadgerThread(threading.Thread):
+class cryptoprobeThread(threading.Thread):
    def __init__(self, threadID, queue):
       threading.Thread.__init__(self)
       self.threadID = threadID
       self.queue = queue
    def run(self):
-      runHoneybadger(self.queue)
+      runCryptoprobe(self.queue)
 
-def runHoneybadger(queue):
+def runCryptoprobe(queue):
     while not exitFlag:
         queueLock.acquire()
         if not queue.empty():
             contract = queue.get()
             queueLock.release()
-            print('Running Honeybadger on contract: '+str(contract).split('/')[-1])
+            print('Running Cryptoprobe on contract: '+str(contract).split('/')[-1])
             cmd = ''
             if BYTECODE:
-                cmd = 'python honeybadger.py -s '+str(contract)+' -b -j'
+                cmd = 'python cryptoprobe.py -s '+str(contract)+' -b -j'
             else:
-                cmd = 'python honeybadger.py -s '+str(contract)+' -j'
+                cmd = 'python cryptoprobe.py -s '+str(contract)+' -j'
             subprocess.call(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             print('Running contract '+str(contract).split('/')[-1])+' finished.'
         else:
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     threadID = 1
     #for i in range(multiprocessing.cpu_count()):
     for i in range(1):
-        thread = honeybadgerThread(threadID, queue)
+        thread = cryptoprobeThread(threadID, queue)
         thread.start()
         threads.append(thread)
         threadID += 1

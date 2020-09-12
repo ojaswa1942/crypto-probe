@@ -11,6 +11,7 @@ import symExec
 import global_params
 import z3
 import z3.z3util
+import art
 
 from source_map import SourceMap
 from utils import run_command
@@ -70,10 +71,10 @@ def evm_cmp_version():
 
     for i in range(0, len(max_version)):
         if max_version[i] < version[i]:
-            logging.critical("The installed evm version ({}) is too new. Honeybadger supports at most version {}.".format(version_str, max_version_str))
+            logging.critical("The installed evm version ({}) is too new. Cryptoprobe supports at most version {}.".format(version_str, max_version_str))
             return False
         if min_version[i] > version[i]:
-            logging.critical("The installed evm version ({}) is too old. Honeybadger requires at least version {}.".format(version_str, min_version_str))
+            logging.critical("The installed evm version ({}) is too old. Cryptoprobe requires at least version {}.".format(version_str, min_version_str))
             return False
 
     return True
@@ -149,26 +150,8 @@ def main():
     global args
 
     print("")
-    print("                       ___,,___                                   ")
-    print("                 _,-='=- =-  -`''--.__,,.._                       ")
-    print("              ,-;// /  - -       -   -= - '=.                     ")
-    print("            ,'///    -     -   -   =  - ==-=\`.                   ")
-    print("           |/// /  =    `. - =   == - =.=_,,._ `=/|               ")
-    print("          ///    -   -    \  - - = ,ndDMHHMM/\b  \\               ")
-    print("        ,' - / /        / /\ =  - /MM(,,._`YQMML  `|              ")
-    print("       <_,=^Kkm / / / / ///H|wnWWdMKKK#''-;. `'0\  |              ")
-    print("              `''QkmmmmmnWMMM\''WHMKKMM\   `--.  \> \             ")
-    print("                    `'''  `->>>    ``WHMb,.    `-_<@)             ")
-    print("                                      `'QMM`.                     ")
-    print("                                         `>>>                     ")
-    print("  _    _                        ____            _                 ")
-    print(" | |  | |                      |  _ \          | |                ")
-    print(" | |__| | ___  _ __   ___ _   _| |_) | __ _  __| | __ _  ___ _ __ ")
-    print(" |  __  |/ _ \| '_ \ / _ \ | | |  _ < / _` |/ _` |/ _` |/ _ \ '__|")
-    print(" | |  | | (_) | | | |  __/ |_| | |_) | (_| | (_| | (_| |  __/ |   ")
-    print(" |_|  |_|\___/|_| |_|\___|\__, |____/ \__,_|\__,_|\__, |\___|_|   ")
-    print("                           __/ |                   __/ |          ")
-    print("                          |___/                   |___/           ")
+    print(art.LOGO)
+    print(art.NAME)
     print("")
 
     parser = argparse.ArgumentParser()
@@ -178,7 +161,7 @@ def main():
     group.add_argument("-ru", "--remoteURL", type=str,
                        help="Get contract from remote URL. Solidity by default. Use -b to process evm instead.", dest="remote_URL")
 
-    parser.add_argument("--version", action="version", version="HoneyBadger version 0.0.1 (Oyente version 0.2.7 - Commonwealth)")
+    parser.add_argument("--version", action="version", version="Cryptoprobe version 0.1.0 (Honeybadger version 0.0.1, Oyente version 0.2.7 - Commonwealth)")
     parser.add_argument(
         "-b", "--bytecode", help="read bytecode in source instead of solidity file.", action="store_true")
 

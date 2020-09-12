@@ -239,7 +239,7 @@ def build_cfg_and_analyze():
 
 def print_cfg():
     f = open(c_name.replace('.disasm', '').replace(':', '-')+'.dot', 'w')
-    f.write('digraph honeybadger_cfg {\n')
+    f.write('digraph cryptoprobe_cfg {\n')
     f.write('rankdir = TB;\n')
     f.write('size = "240"\n')
     f.write('graph[fontname = Courier, fontsize = 14.0, labeljust = l, nojustify = true];node[shape = record];\n')

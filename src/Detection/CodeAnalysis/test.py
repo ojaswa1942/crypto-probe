@@ -13,14 +13,14 @@ loop_limit = 10
 
 if __name__ == '__main__':
     print("")
-    print("                Testing HoneyBadger")
+    print("                Testing CryptoProbe")
     FNULL = open(os.devnull, 'w')
     os.mkdir('results')
     print("=======================================================")
 
 
     print("Testing 'CryptoRoulette.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/CryptoRoulette.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/CryptoRoulette.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'Gift_1_Eth.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/Gift_1_Eth.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/Gift_1_Eth.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -70,7 +70,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'MultiplicatorX3.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/MultiplicatorX3.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/MultiplicatorX3.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'PrivateBank.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/PrivateBank.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/PrivateBank.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -120,7 +120,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'Test1.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/Test1.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/Test1.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'TestBank.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/TestBank.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/TestBank.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -170,7 +170,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'TestToken.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/TestToken.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/TestToken.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -195,7 +195,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'WhaleGiveaway1.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/WhaleGiveaway1.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/WhaleGiveaway1.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'firstTest.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/firstTest.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/firstTest.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'DividendDistributor.bin'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/DividendDistributor.bin -b -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/DividendDistributor.bin -b -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -270,7 +270,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'For_Test.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/For_Test.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/For_Test.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -295,7 +295,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'KingOfTheHill.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/KingOfTheHill.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/KingOfTheHill.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -320,7 +320,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'NEW_YEARS_GIFT.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/NEW_YEARS_GIFT.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/NEW_YEARS_GIFT.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -345,7 +345,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'OpenAddressLottery.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/OpenAddressLottery.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/OpenAddressLottery.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -370,7 +370,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'PINCODE.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/PINCODE.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/PINCODE.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -395,7 +395,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'RichestTakeAll.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/RichestTakeAll.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/RichestTakeAll.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -420,7 +420,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'ICO_Hold.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/ICO_Hold.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/ICO_Hold.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -445,7 +445,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'TransferReg.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/TransferReg.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/TransferReg.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -470,7 +470,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'testBank2.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/testBank2.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/testBank2.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -495,7 +495,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'GuessNumber.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/GuessNumber.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/GuessNumber.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -520,7 +520,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'G_GAME.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/G_GAME.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/G_GAME.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -545,7 +545,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'IFYKRYGE.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/IFYKRYGE.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/IFYKRYGE.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -570,7 +570,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'EtherBet.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/EtherBet.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/EtherBet.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -595,7 +595,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'TerrionFund.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/TerrionFund.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/TerrionFund.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
@@ -620,7 +620,7 @@ if __name__ == '__main__':
 
 
     print("Testing 'TrustFund.sol'...")
-    p = subprocess.Popen(shlex.split("python honeybadger.py -s ../honeypots/TrustFund.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
+    p = subprocess.Popen(shlex.split("python cryptoprobe.py -s ../honeypots/TrustFund.sol -j -glt "+str(global_timeout)+" -ll "+str(loop_limit)), stdout=subprocess.PIPE, stderr=FNULL)
     if "======= error =======" in p.communicate()[0]:
         print("\033[91m!!! FAILED !!!\033[0m")
     else:
