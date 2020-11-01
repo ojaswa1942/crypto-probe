@@ -41,5 +41,6 @@ RUN pip install requests
 RUN pip install web3==0.1.9
 
 WORKDIR /root
-COPY assets/datasets/honeypots honeypots
-COPY CodeAnalysis cryptoprobe
+COPY datasets/honeypots honeypots
+COPY datasets/source_code honeypots_sources
+COPY app cryptoprobe
