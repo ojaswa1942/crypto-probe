@@ -31,3 +31,5 @@ RESULTS_DIR = "results/"
 
 # Analyze bytecode or source code (default is source code = 0)
 BYTECODE = 0
+
+finalReturnResults = {}

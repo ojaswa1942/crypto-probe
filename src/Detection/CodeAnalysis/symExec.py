@@ -2852,6 +2852,7 @@ def closing_message():
     global results
 
     log.info("\t====== Analysis Completed ======")
+
     if global_params.STORE_RESULT:
         result_file = os.path.join(global_params.RESULTS_DIR, c_name+'.json'.split('/')[-1])
         if '.sol' in c_name:
@@ -2887,6 +2888,7 @@ def main(contract, contract_sol, _source_map = None):
     global c_name_sol
     global source_map
     global start_time
+    global finalReturnResults
 
     c_name = contract
     c_name_sol = contract_sol
@@ -2920,6 +2922,7 @@ def main(contract, contract_sol, _source_map = None):
 
     detect_bugs()
     closing_message()
+    global_params.finalReturnResults = json.dumps(results, indent=1)
 
 if __name__ == '__main__':
     main(sys.argv[1])

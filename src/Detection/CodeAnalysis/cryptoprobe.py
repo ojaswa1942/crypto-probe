@@ -268,5 +268,7 @@ def main():
                 with open(result_file, 'a') as of:
                     of.write("}")
 
+    return global_params.finalReturnResults
+
 if __name__ == '__main__':
     main()

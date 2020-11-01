@@ -1,7 +1,8 @@
-pandas 
-flask 
-numpy 
-joblib 
-matplotlib 
-sklearn 
-xgboost==0.90 
+pandas
+flask
+flask_cors
+numpy
+joblib
+matplotlib
+sklearn
+xgboost==0.90
