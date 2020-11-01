@@ -1,0 +1,7 @@
+pandas 
+flask 
+numpy 
+joblib 
+matplotlib 
+sklearn 
+xgboost==0.90 
