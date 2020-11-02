@@ -2,3 +2,5 @@ setuptools
 wheel
 requests
 web3==0.1.9
+flask
+flask_cors

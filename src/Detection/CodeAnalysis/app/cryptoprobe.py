@@ -158,7 +158,7 @@ def main(remoteAddress = None):
     print("")
 
     parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("-s", "--source", type=str,
                        help="local source file name. Solidity by default. Use -b to process evm instead. Use stdin to read from stdin.")
     group.add_argument("-ru", "--remoteURL", type=str,
@@ -213,12 +213,16 @@ def main(remoteAddress = None):
     # Check that our system has everything we need (evm, Z3)
     if not has_dependencies_installed():
         return
+
+    if not args.remote_URL and not args.source and not remoteAddress:
+        print("Specify atleast one of -ru or -s or functional args")
+        return
+
     # Retrieve contract from remote URL, if necessary
     if args.remote_URL or remoteAddress:
         contractAddress = remoteAddress if remoteAddress else args.remote_URL
         dataSource = EthereumData()
         code = dataSource.getSourceCode(contractAddress)
-        print("Got", code)
         filename = "remote_contract.evm" if args.bytecode else "remote_contract.sol"
         args.source = filename
         with open(filename, 'w') as f:

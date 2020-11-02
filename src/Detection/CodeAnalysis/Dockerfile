@@ -17,7 +17,7 @@ RUN apt-add-repository "deb https://deb.nodesource.com/${NODEREPO} $(lsb_release
 RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
 RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
 RUN apt-get update
-RUN apt-get install -y musl-dev golang-go bison zlib1g-dev libyaml-dev libssl-dev libgdbm-dev libreadline-dev zlib1g-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev libffi-dev nodejs yarn && apt-get clean
+RUN apt-get install -y musl-dev golang-go vim bison zlib1g-dev libyaml-dev libssl-dev libgdbm-dev libreadline-dev zlib1g-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev libffi-dev nodejs yarn && apt-get clean
 
 RUN npm install npm@latest -g  && npm install n --global && n stable
 
@@ -37,6 +37,8 @@ RUN pip install --upgrade pip
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt 
+
+EXPOSE 5000
 
 WORKDIR /root
 COPY datasets/honeypots honeypots

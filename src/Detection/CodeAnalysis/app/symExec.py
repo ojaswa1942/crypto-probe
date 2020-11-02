@@ -14,6 +14,7 @@ import os.path
 import z3
 import binascii
 import global_params
+import threading
 
 from collections import namedtuple
 from vargenerator import *
@@ -2897,9 +2898,10 @@ def main(contract, contract_sol, _source_map = None):
     initGlobalVars()
     set_cur_file(c_name[4:] if len(c_name) > 5 else c_name)
     start_time = time.time()
+    threading
     if hasattr(signal, 'SIGALRM'):
-        signal.signal(signal.SIGALRM, handler)
-        signal.alarm(global_params.GLOBAL_TIMEOUT)
+        alarm = threading.Timer(global_params.GLOBAL_TIMEOUT, handler)
+        alarm.start()
 
     log.info("Running, please wait...")
 
@@ -2916,7 +2918,7 @@ def main(contract, contract_sol, _source_map = None):
             pass
 
     if callable(getattr(signal, "alarm", None)):
-        signal.alarm(0)
+        alarm.cancel()
 
     log.info("\t============ Results ===========")
 
