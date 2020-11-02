@@ -34,11 +34,9 @@ COPY --from=solc /usr/bin/solc /usr/bin/solc
 RUN virtualenv venv && source venv/bin/activate
 # Upgrade pip
 RUN pip install --upgrade pip 
-RUN pip install --upgrade setuptools wheel
-# Install requests
-RUN pip install requests
-# Install web3
-RUN pip install web3==0.1.9
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt 
 
 WORKDIR /root
 COPY datasets/honeypots honeypots

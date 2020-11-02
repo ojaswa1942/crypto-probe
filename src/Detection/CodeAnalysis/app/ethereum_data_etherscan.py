@@ -4,6 +4,9 @@
 import json
 import re
 import requests
+import urllib
+import json 
+from urllib import urlopen
 
 class EthereumData:
 	def __init__(self):
@@ -26,3 +29,10 @@ class EthereumData:
 		html = r.text
 		code = re.findall("<div id='verifiedbytecode2'>(\w*)<\/div>", html)[0]
 		return code
+
+	def getSourceCode(self, address):
+		endpoint = self.apiDomain + "?module=contract&action=getsourcecode&address=" + address + "&apikey=" + self.apikey
+		url = urlopen(endpoint)
+		result = json.loads(url.read().decode()).get('result')
+		sourceCode = result[0]['SourceCode']
+		return sourceCode

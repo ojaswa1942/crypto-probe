@@ -12,11 +12,14 @@ import global_params
 import z3
 import z3.z3util
 import art
+import urllib
+import json
 
 from source_map import SourceMap
 from utils import run_command
 from HTMLParser import HTMLParser
-
+from urllib import urlopen
+from ethereum_data_etherscan import *
 
 # TODO Add checks for solc 0.4.25 and z3 4.7.1
 
@@ -146,7 +149,7 @@ def remove_temporary_file(path):
         except:
             pass
 
-def main():
+def main(remoteAddress = None):
     global args
 
     print("")
@@ -211,18 +214,12 @@ def main():
     if not has_dependencies_installed():
         return
     # Retrieve contract from remote URL, if necessary
-    if args.remote_URL:
-        r = requests.get(args.remote_URL)
-        code = r.text
+    if args.remote_URL or remoteAddress:
+        contractAddress = remoteAddress if remoteAddress else args.remote_URL
+        dataSource = EthereumData()
+        code = dataSource.getSourceCode(contractAddress)
+        print("Got", code)
         filename = "remote_contract.evm" if args.bytecode else "remote_contract.sol"
-        if "etherscan.io" in args.remote_URL and not args.bytecode:
-            try:
-                filename = re.compile('<td>Contract<span class="hidden-su-xs"> Name</span>:</td><td>(.+?)</td>').findall(code.replace('\n','').replace('\t',''))[0].replace(' ', '')
-                filename += ".sol"
-            except:
-                pass
-            code = re.compile("<pre class='js-sourcecopyarea' id='editor' style='.+?'>([\s\S]+?)</pre>", re.MULTILINE).findall(code)[0]
-            code = HTMLParser().unescape(code)
         args.source = filename
         with open(filename, 'w') as f:
             f.write(code)
@@ -255,7 +252,6 @@ def main():
 
             with open(processed_evm_file, 'w') as of:
                 of.write(removeSwarmHash(bin_str))
-
             analyze(processed_evm_file, disasm_file, SourceMap(cname, args.source))
 
             remove_temporary_file(processed_evm_file)
