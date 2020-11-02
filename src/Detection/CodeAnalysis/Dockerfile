@@ -38,9 +38,11 @@ RUN pip install --upgrade pip
 COPY requirements.txt .
 RUN pip install -r requirements.txt 
 
+WORKDIR /root
+# COPY datasets/honeypots honeypots
+# COPY datasets/source_code honeypots_sources
+COPY app cryptoprobe
+
 EXPOSE 5000
 
-WORKDIR /root
-COPY datasets/honeypots honeypots
-COPY datasets/source_code honeypots_sources
-COPY app cryptoprobe
+ENTRYPOINT ["python", "cryptoprobe/server.py"] 
