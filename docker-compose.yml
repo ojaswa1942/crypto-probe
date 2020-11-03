@@ -1,0 +1,42 @@
+version: "3.3"
+services:
+  api:
+    build: 
+      context: ./src
+    stdin_open: true
+    tty: true        
+    depends_on:
+      - detectionsystem
+    volumes:
+      - .:/code
+    ports:
+      - "3000:3000"
+
+  detectionsystem:
+    build:
+      context: ./src/Detection/App
+    stdin_open: true
+    tty: true        
+    depends_on:
+      - codeanalysis
+      - ml
+    volumes:
+      - .:/code
+    ports:
+      - "5000:5000"
+
+  codeanalysis:
+    build:
+      context: ./src/Detection/CodeAnalysis
+    volumes:
+      - .:/code
+    ports:
+      - "5001:5000"
+
+  ml:
+    build:
+      context: ./src/Detection/MachineLearning
+    volumes:
+      - .:/code
+    ports:
+      - "5002:5000"

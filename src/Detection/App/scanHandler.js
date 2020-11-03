@@ -1,36 +1,57 @@
 const fetch = require("node-fetch");
 
-const handleScan = async (request, response) => {
+const CODE_WEIGHT = 0.4, ML_WEIGHT = 0.6;
+// const CodeToModelLabels = {
+// 	hidden_state_update: ,
+// 	balance_disorder: ,
+// 	hidden_transfer: ,
+// 	straw_man_contract: ,
+// 	skip_empty_string_literal: ,
+// 	inheritance_disorder: ,
+// 	uninitialised_struct: ,
+// 	type_deduction_overflow: ,
+// };
+
+const handleScan = async (req, res) => {
     let contractAddresss = req.params.id;
 	let codeResponse, mlResponse;
 
-	codeResponse = fetch(`http://codeanalysis:5000/${id}`)
+	codePromise = fetch(`http://codeanalysis:5000/${contractAddresss}`)
 	.then(res => {
 		if(res.status !== 200) throw new Error("Nopes");
 		return res.json();
 	})
-	.then(res => res)
+	.then(res => { codeResponse = res })
 	.catch(err => {
 		console.log("Error occurred while Code Analysis");
 		return null;
 	});
 
-	mlResponse = fetch(`http://ml:5000/${id}`)
+	mlPromise = fetch(`http://ml:5000/${contractAddresss}`)
 	.then(res => {
 		if(res.status !== 200) throw new Error("Nopes");
 		return res.json();
 	})
-	.then(res => res)
+	.then(res => { mlResponse = res })
 	.catch(err => {
 		console.log("Error occurred while ML Analysis");
 		return null;
 	});
 
-	let pendingResponses = [codeResponse, mlResponse];
+	let pendingResponses = [codePromise, mlPromise];
 	await Promise.allSettled(pendingResponses);
 
-	console.log("yep");
-	console.log(codeResponse, mlResponse);
+
+
+	let report = {
+		contractAddresss,
+		status: 200,
+		reports: {
+			codeAnalysis: codeResponse,
+			modelAnalysis: mlResponse
+		}
+	};
+	res.status(200).json(report);
 
 };
 
