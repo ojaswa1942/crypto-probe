@@ -2,23 +2,18 @@ require('dotenv').config();
 
 const {
   PORT,
-  PGHOST,
-  PGUSER,
-  PGDATABASE,
-  PGPASSWORD,
-  PGPORT,
+  DBHOST,
+  DBUSER,
+  DBNAME,
+  DBPASSWORD,
   JWT_SECRET,
-  MAPS_API_KEY,
 } = process.env;
 
 module.exports = {
 	port: PORT || 3000,
-	dbConfig: {
-    user: PGUSER,
-    password: PGPASSWORD,
-    host: PGHOST,
-    database: PGDATABASE,
-    port: PGPORT,
+	db: {
+		uri: `mongodb+srv://${DBUSER}:${DBPASSWORD}@${DBHOST}/${DBNAME}?retryWrites=true&w=majority`,
+    database: DBNAME,
 	},
 	secrets: {
 		jwt: JWT_SECRET,

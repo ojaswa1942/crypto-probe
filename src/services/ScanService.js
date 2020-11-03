@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { secrets } = require('../utils/config');
 
 class ScanService {
-  static login = async (args, context) => {
+  static analyze = async (args, context) => {
     const { email, password } = args;
     const { db, logger } = context;
 
@@ -25,6 +25,10 @@ class ScanService {
     logger(`[LOGIN]`, payload.userEmail, payload.accountType);
 
     return { success: true, body: { message: 'Logged in', token } };
+  };
+
+  static details = async (args, context) => {
+
   };
 }
 

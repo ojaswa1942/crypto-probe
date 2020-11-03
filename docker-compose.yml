@@ -21,7 +21,7 @@ services:
       - codeanalysis
       - ml
     volumes:
-      - .:/code
+      - ./src/Detection:/code
     ports:
       - "5000:5000"
 
@@ -29,7 +29,7 @@ services:
     build:
       context: ./src/Detection/CodeAnalysis
     volumes:
-      - .:/code
+      - ./src/Detection/CodeAnalysis:/code
     ports:
       - "5001:5000"
 
@@ -37,6 +37,6 @@ services:
     build:
       context: ./src/Detection/MachineLearning
     volumes:
-      - .:/code
+      - ./src/Detection/MachineLearning:/code
     ports:
       - "5002:5000"
