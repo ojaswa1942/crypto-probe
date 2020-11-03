@@ -4,27 +4,42 @@ const { secrets } = require('../utils/config');
 
 class AuthService {
   static login = async (args, context) => {
-    const { email, password } = args;
+    const { username, password } = args;
     const { db, logger } = context;
 
-    const authUsers = await db.select().from(`auth`).where({ email });
-    if (!authUsers.length) return { success: false, error: `Incorrect Credentials` };
+    const authUser = await db.collection(`auth`).findOne({ username });
+    if (!authUser) return { success: false, error: `Incorrect Credentials` };
 
-    const user = authUsers[0];
-    const match = await bcrypt.compare(password, user.password);
+    const match = await bcrypt.compare(password, authUser.password);
     if (!match) return { success: false, error: `Incorrect Credentials` };
 
     const payload = {
       userEmail: user.email,
-      accountType: user.type,
     };
     const token = jwt.sign(payload, secrets.jwt, {
       expiresIn: '10d',
     });
 
-    logger(`[LOGIN]`, payload.userEmail, payload.accountType);
+    logger(`[LOGIN]`, payload.userEmail);
 
     return { success: true, body: { message: 'Logged in', token } };
+  };
+
+  static signup = async (args, context) => {
+    const { username, password } = args;
+    const { db, logger } = context;
+
+    const authUser = await db.collection(`auth`).findOne({ username });
+    if (authUser) return { success: false, error: `User already exists` };
+
+    const hash = await bcrypt.hash(password, 10);
+
+    await db.collection(`auth`)
+    .insertOne({ username, password: hash });
+
+    logger(`[SIGNUP]`, { username, by: payload.userEmail });
+
+    return { success: true, body: { message: 'Signed up' } };
   };
 }
 
