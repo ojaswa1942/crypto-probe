@@ -30,7 +30,7 @@ try {
 		app.post('/cryptoprobe/v1/analyze', (req, res) => res.sendStatus(200));
 		app.post('/cryptoprobe/v1/details', (req, res) => res.sendStatus(200));
 		app.post('/cryptoprobe/v1/signup', withPrivilege, (req, res) => res.sendStatus(200));
-	})
+	});
 }
 catch(error) {
 	logger({ type: `ERROR` }, `Unhandled Exeption@server.js`);
