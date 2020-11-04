@@ -3,9 +3,9 @@ const fetch = require('node-fetch');
 class ScanService {
   static analyze = async (args, context) => {
     const { address } = args;
-    const { db, logger } = context;
+    const { db, logger, userEmail } = context;
 
-    logger(`[ANALYZE]`, payload.userEmail, payload.address);
+    logger(`[ANALYZE]`, userEmail, address);
 
     try {
       const existingData = await db.collection(`contracts`)
@@ -21,7 +21,7 @@ class ScanService {
         };
       }
 
-      const scanResponse = await fetch(`http://detectionsystem:5000`)
+      const scanResponse = await fetch(`http://detectionsystem:5000/scan/${address}`)
       .then(res => res.json())
       .then(res => res);
 
@@ -52,9 +52,9 @@ class ScanService {
 
   static details = async (args, context) => {
     const { address } = args;
-    const { db, logger } = context;
+    const { db, logger, userEmail } = context;
 
-    logger(`[DETAILS]`, payload.userEmail, payload.address);
+    logger(`[DETAILS]`, userEmail, address);
 
     try {
       const existingData = await db.collection(`contracts`)

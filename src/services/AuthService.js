@@ -14,7 +14,7 @@ class AuthService {
     if (!match) return { success: false, error: `Incorrect Credentials` };
 
     const payload = {
-      userEmail: user.email,
+      userEmail: username,
     };
     const token = jwt.sign(payload, secrets.jwt, {
       expiresIn: '10d',
@@ -27,7 +27,7 @@ class AuthService {
 
   static signup = async (args, context) => {
     const { username, password } = args;
-    const { db, logger } = context;
+    const { db, logger, userEmail } = context;
 
     const authUser = await db.collection(`auth`).findOne({ username });
     if (authUser) return { success: false, error: `User already exists` };
@@ -37,7 +37,7 @@ class AuthService {
     await db.collection(`auth`)
     .insertOne({ username, password: hash });
 
-    logger(`[SIGNUP]`, { username, by: payload.userEmail });
+    logger({ type: `warning`}, `[SIGNUP]`, { username, by: userEmail });
 
     return { success: true, body: { message: 'Signed up' } };
   };
